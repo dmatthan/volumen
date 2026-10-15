@@ -68,7 +68,7 @@
     ['Library', [
       ['Arrows  H J K L', 'Move between books'],
       ['/', 'Search: titles and authors at once, and every book’s text beneath; ↓ to the results, Enter opens a book at a match'],
-      ['[  ]', 'Previous or next shelf: All, Reading now, Finished, Not started, your collections'],
+      ['[  ]', 'Previous or next shelf: All, Reading, Finished, Not started, your collections'],
       ['A', 'The focused book’s collections (1–9 put it in or take it out); right-click does the same'],
       ['N', 'Notebook: every book’s highlights, notes and lines; / filters, Enter opens the book there'],
       ['Enter', 'Open'],

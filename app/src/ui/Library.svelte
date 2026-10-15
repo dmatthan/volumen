@@ -619,8 +619,10 @@
     .search { flex: 1; width: auto; }
     .add-btn .add-l { display: none; }
     .add-btn { width: 44px; padding: 0; justify-content: center; font-size: 22px; }
-    .shelves { margin: -4px 0 20px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
-    .shelves > button { flex: none; }
+    /* (the row fits a phone's width, and wraps rather than scrolls once there are
+       collections too) */
+    .shelves { margin: -4px 0 20px; gap: 6px; }
+    .shelves > button { flex: none; padding: 0 12px; }
     .books { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px 14px; }
     .add .c-s { display: none; }
     .t { font-size: var(--t-s); }

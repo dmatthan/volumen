@@ -7,7 +7,7 @@ export interface Collection { id: string; name: string; books: string[] }
 /** The shelves above the library: three that fill themselves, then the reader's own. */
 export const SMART = [
   { id: 'all', name: 'All' },
-  { id: 'reading', name: 'Reading now' },
+  { id: 'reading', name: 'Reading' },
   { id: 'finished', name: 'Finished' },
   { id: 'new', name: 'Not started' },
 ] as const;
