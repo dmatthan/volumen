@@ -1,0 +1,6 @@
+# Local development only (copied to .dev.vars, which wrangler dev reads and deploy never
+# uploads). Turnstile's test secret: passes every check, and the service refuses it
+# unless DEV is set and the page is on this computer.
+DEV=1
+TURNSTILE_SECRET=1x0000000000000000000000000000000AA
+TURNSTILE_SITEKEY=1x00000000000000000000AA

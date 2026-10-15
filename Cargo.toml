@@ -1,0 +1,42 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "src-tauri"]
+default-members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+postcard = { version = "1", features = ["alloc"] }
+
+# The desktop unwinds on a panic, so a bad book is an error, not a closed app (main.rs
+# `guarded`). The web engine aborts (WebAssembly cannot unwind on stable Rust); the
+# worker reports the fault and starts again (app/src/core/web.ts).
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+
+[profile.wasm]
+inherits = "release"
+panic = "abort"
+
+[profile.bench]
+inherits = "release"
+strip = false
+debug = 1
+
+# The engine is the hot path: optimise it even in development builds.
+[profile.dev.package."*"]
+opt-level = 3
+[profile.dev.package.vol-press]
+opt-level = 3
+[profile.dev.package.vol-ingest]
+opt-level = 3
+[profile.dev.package.vol-engine]
+opt-level = 3
+[profile.dev.package.vol-model]
+opt-level = 3

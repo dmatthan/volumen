@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · Volumen</title>
+<meta name="description" content="What Volumen keeps, where, and what it cannot see.">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef0f2">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#14161a">
+<link rel="icon" href="/app/icon-256.png">
+<link rel="stylesheet" href="/site.css">
+<script src="/site.js"></script>
+</head>
+<body>
+<header class="wrap top">
+  <a class="mark" href="/"><b>Volumen</b> <i lang="la-fonipa">[vo<span class="st">ˈ</span>lu.men]</i></a>
+  <nav aria-label="Site">
+    <a href="/#reading">Reading</a>
+    <a href="/#sharing">Sharing</a>
+    <a href="/#install">Installing</a>
+    <a href="/privacy" aria-current="page">Privacy</a>
+  </nav>
+</header>
+
+<main class="wrap prose">
+  <h1>Privacy</h1>
+
+  <h2>Your library</h2>
+  <p>Books, highlights, notes, marks, reading places and settings are kept in your browser's storage on your own device, or in the desktop app's own files. They are not sent anywhere unless you share a book or send your notes on one, and the library can be backed up to a single file that only you hold.</p>
+
+  <h2>Sharing a book</h2>
+  <p>A book is encrypted on the writer's device before it leaves it. The key is part of the link the writer sends and is never sent to the service: the part of an address after the # stays in the browser. The service keeps the encrypted file, its size, when it was shared and when it expires, and which writer shared it. It cannot read the book, and does not know its title.</p>
+  <p>A shared book is deleted, with every note sent on it, when the writer withdraws the link, or ninety days after it was shared unless the writer keeps it longer.</p>
+
+  <h2>Readers' notes</h2>
+  <p>Readers need no account. When a reader sends their notes, they are encrypted on their device with a key from the same link, and kept under an identifier made for that book alone, so one reader's notes on two books cannot be linked. The name a reader gives travels inside the encrypted notes. Only the signed-in writer can fetch them from the service, which cannot open them.</p>
+
+  <h2>Writers</h2>
+  <p>Writers are invited. A writer's account holds the name they give and the public key of each passkey they sign in with; the passkey itself stays on their device. Signing in sets one cookie, which keeps them signed in for thirty days. Where the passkey allows it, the writer's list of shares is kept too, encrypted with a key that the passkey produces on the writer's devices and that is never sent, so that their other devices can open the same shares.</p>
+
+  <h2>The service</h2>
+  <p>Volumen is served by Cloudflare, which handles each visitor's network address to deliver the site and to limit abuse. Volumen counts requests per address for a minute at a time, and keeps no record of addresses or of what was asked for. Cloudflare Turnstile checks that a person is present when an invitation is accepted, when a writer signs in, and the first time a reader sends notes on a book.</p>
+  <p>There are no analytics, advertising or tracking cookies. The fonts are served from this site.</p>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span class="name">Volumen</span>
+    <a href="/read">The library</a>
+    <a href="/">Volumen.page</a>
+  </div>
+</footer>
+</body>
+</html>

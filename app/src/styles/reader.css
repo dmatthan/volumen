@@ -1,0 +1,126 @@
+/* The reading surface. Lines arrive already broken by the press; the browser only draws
+   them. Every font setting here must match what the press measured with
+   (crates/press/src/shape.rs): the theme's families (--f-text), optical size = font size,
+   its weights (--wb, --wB) and axes (--fvs), letter and word spacing (--ls, --ws),
+   old-style proportional figures, all-small-caps (synthesised for faces without them),
+   superscripts at 0.7. Nothing may be synthesised by the browser. */
+
+.reader { position: absolute; inset: 0; display: flex; flex-direction: column; background-color: var(--paper); transition: background-color 1.4s ease; }
+.stage:focus-visible { outline: none; }
+.stage { position: absolute; inset: 0; overflow: hidden; touch-action: none; outline: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.track { position: absolute; left: 0; top: var(--y0); height: var(--colH); will-change: transform; }
+/* no paint containment: marks and note dots sit in the gutter, outside the column */
+.col { position: absolute; top: 0; width: var(--colW); height: var(--colH); contain: size layout style; }
+/* The veil has no edge: the neighbours recede along a smooth curve that starts at the
+   focus window. It stays constant while the sheet moves, so turning never changes the light. */
+/* static overlays above the moving sheet get their own layers, so they are painted once
+   and only composited while it moves (without this WebKitGTK repainted them every frame) */
+.veil { position: absolute; top: 0; bottom: 0; pointer-events: none; transition: opacity .55s cubic-bezier(.3,.6,.3,1); will-change: transform; transform: translateZ(0); }
+.veil.l { left: 0; width: var(--fl); background: linear-gradient(to left, transparent, var(--veil-soft) calc(var(--feather) * 0.45), var(--veil) var(--feather), var(--paper) 100%); }
+.veil.r { right: 0; width: var(--fr); background: linear-gradient(to right, transparent, var(--veil-soft) calc(var(--feather) * 0.45), var(--veil) var(--feather), var(--paper) 100%); }
+.clear-veil .veil { opacity: 0; }
+/* Minimal: nothing beside the spread shows. The sides are paper, with a short fade at the
+   gutter, so during a turn the columns pass under them like pages under a frame. */
+.view-minimal .veil.l { background: linear-gradient(to left, transparent, var(--paper) 14px); }
+.view-minimal .veil.r { background: linear-gradient(to right, transparent, var(--paper) 14px); }
+.view-minimal.clear-veil .veil { opacity: 1; }
+
+.ln {
+  --o: var(--opsz); --w: var(--wb, 400);
+  position: absolute; height: var(--lh); line-height: var(--lh); white-space: nowrap;
+  font-family: var(--f-text, var(--f-book)); font-size: var(--fs); font-weight: var(--wb, 400); color: var(--ink);
+  font-optical-sizing: none; font-variant-numeric: oldstyle-nums proportional-nums; font-kerning: normal;
+  font-variant-ligatures: common-ligatures contextual; letter-spacing: calc(var(--ls, 0px) + var(--lfit, 0px)); word-spacing: calc(var(--ws, 0px) + var(--fit, 0px)); text-align: left;
+  font-synthesis: none; font-feature-settings: normal;
+}
+.ln, .ln * { font-variation-settings: var(--fvs, "wght" 400,) "opsz" var(--o), "wght" var(--w); }
+.ln.j { text-align: justify; text-align-last: justify; }
+.ln.r { text-align: right; }
+.ln.c { text-align: center; }
+.ln.hy::after { content: "-"; }
+.ln b, .ln.hd { --w: var(--wB, 650); font-weight: var(--wB, 650); }
+.ln i { font-style: italic; }
+.ln.sc2 { font-variant-caps: all-small-caps; }
+.ln .sc { font-variant-caps: all-small-caps; }
+/* a face without small capitals: capitals at 0.78, tracked, a touch heavier (SC_* in shape.rs) */
+.synth-sc .ln .sc { font-variant-caps: normal; text-transform: uppercase; font-size: 0.78em; letter-spacing: calc(var(--ls, 0px) + var(--lfit, 0px) + 0.05em); --o: var(--opsz-sc); --w: var(--w-sc); font-weight: var(--w-sc); }
+.synth-sc .ln.sc2 { font-variant-caps: normal; text-transform: uppercase; font-size: calc(var(--fs) * 0.78); letter-spacing: calc(var(--ls, 0px) + var(--lfit, 0px) + 0.05em); --o: var(--opsz-sc); --w: var(--w-sc); font-weight: var(--w-sc); }
+.ln sup, .ln sub { --o: var(--opsz-s); font-size: 0.7em; line-height: 0; position: relative; vertical-align: 0; }
+.ln sup { top: -0.42em; }
+.ln sub { top: 0.2em; }
+.ln .bul { position: absolute; left: -0.95em; color: var(--ink-3); }
+.ln.pre { font-family: "JetBrains Mono", monospace; white-space: pre; letter-spacing: var(--lfit, 0px); word-spacing: var(--fit, 0px); font-variant-ligatures: none; font-variant-numeric: normal; font-feature-settings: normal; font-weight: 400; }
+.ln.pre, .ln.pre * { font-variation-settings: "wght" 400; }
+.ln.brk { left: 0; width: var(--colW); height: calc(var(--lh) * 2); line-height: calc(var(--lh) * 2); text-align: center; color: var(--ink-3); }
+.ln.mk { background: var(--wash); box-shadow: calc(-6px - var(--x, 0px)) 0 0 var(--wash), 6px 0 0 var(--wash); }
+.ln.mk::before { content: ""; position: absolute; left: calc(-12px - var(--x, 0px)); top: 0; bottom: 0; width: 3px; border-radius: 2px; background: var(--accent); }
+/* tables: cells are lines like any other, set ragged; rows are parted by a hairline */
+.trule { position: absolute; height: 1px; background: var(--rule); }
+/* links change colour and underline only: never the width the press measured */
+.ln a { color: inherit; text-decoration: none; }
+.ln a.nr { color: var(--accent); cursor: pointer; }
+html:not(.touchui) .ln a.nr:hover { text-decoration: underline; text-underline-offset: 0.15em; }
+.ln a.xr { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; text-decoration-color: color-mix(in srgb, currentColor 30%, transparent); }
+html:not(.touchui) .ln a.xr:hover { text-decoration-color: var(--accent); }
+.ln a.ur { text-decoration: underline dotted color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 0.2em; }
+/* images sit in whole rows, centred; they open large on a click */
+.col .img { position: absolute; margin: 0; cursor: zoom-in; }
+.col .img img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 2px; background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.col .img img[src] { background: none; }
+.col .img.pick { outline: 2px solid var(--ink-3); outline-offset: 6px; border-radius: 3px; }
+/* A highlight is a soft rounded shape behind the words, one per line, slightly lighter at
+   the top. It is drawn by a pseudo-element so it adds no width: justification is untouched. */
+.ln mark.hl { color: inherit; background: none; position: relative; }
+.ln mark.hl::before {
+  content: ""; position: absolute; z-index: -1; top: -0.02em; bottom: -0.08em; left: -0.06em; right: -0.06em;
+  border-radius: 0.3em;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--hlc) 78%, var(--hl-lift)), var(--hlc) 70%);
+  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--hlc) 70%, var(--hl-edge));
+}
+.ln mark.hl.hs::before { left: -0.16em; }
+.ln mark.hl.he::before { right: -0.16em; }
+/* find: every hit faintly in the theme's accent, the current one firmly */
+.ln mark.h5 { --hlc: color-mix(in srgb, var(--accent) 20%, transparent); }
+.ln mark.h6 { --hlc: color-mix(in srgb, var(--accent) 34%, transparent); }
+.ln mark.h6::before { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 75%, transparent); }
+.ln mark.h1 { --hlc: var(--hl1); } .ln mark.h2 { --hlc: var(--hl2); } .ln mark.h3 { --hlc: var(--hl3); } .ln mark.h4 { --hlc: var(--hl4); }
+/* a note's dot in the gutter beside its line (render.ts noteDots); its note shows on demand */
+.nd { position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--accent); cursor: pointer; }
+.nd::before { content: ""; position: absolute; inset: -9px; }
+/* another reader's note: their colour, and a ring so it reads apart from one's own */
+.nd.fd { background: var(--dc); box-shadow: 0 0 0 1.5px var(--paper); }
+/* another reader's underline (render.ts fbOpen) needs room under the baseline */
+.ln .fb { padding-bottom: 1px; }
+/* a paragraph another reader marked: a bar in their colour, outside one's own mark's */
+.fmb { position: absolute; height: var(--lh); width: 3px; border-radius: 2px; background: var(--fmc); transform: scaleY(0.75); }
+/* text is selectable for caret lookups; selection itself is allowed only while a
+   hold-and-drag selects (selectstart is cancelled otherwise, see reader.svelte.ts) */
+.track { user-select: text; -webkit-user-select: text; }
+.ln::selection, .ln *::selection { background: var(--wash); }
+.ln.pressing { background: var(--wash); transition: background-color .3s; }
+.ln.pick { background: var(--hover); box-shadow: calc(-6px - var(--x, 0px)) 0 0 var(--hover), 6px 0 0 var(--hover); }
+.ln.pick::before { content: ""; position: absolute; left: calc(-12px - var(--x, 0px)); top: 0; bottom: 0; width: 3px; border-radius: 2px; background: var(--ink-3); }
+
+.chead { position: absolute; left: 0; top: 0; width: var(--colW); box-sizing: border-box; padding-bottom: var(--lh); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 8px; text-align: center; }
+.chead .part { font: 600 var(--t-xs)/1.3 var(--f-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
+.chead .label { font: 600 var(--t-s)/1.3 var(--f-ui); color: var(--ink-2); }
+.chead .title { margin: 0; max-width: 92%; font: var(--wB, 600) calc(var(--fs) * 1.5)/1.18 var(--f-text, var(--f-book)); font-variation-settings: var(--fvs, "wght" 400,) "opsz" 36, "wght" var(--wB, 600); font-synthesis: none; text-wrap: balance; color: var(--ink); }
+
+/* leaves: whole columns that are not running text */
+.leaf { font-feature-settings: normal; position: absolute; inset: 0; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: var(--lh); text-align: center; padding-inline: 4px; font: var(--wb, 400) var(--fs)/var(--lh) var(--f-text, var(--f-book)); font-variation-settings: var(--fvs, "wght" 400,) "opsz" var(--opsz), "wght" var(--wb, 400); font-synthesis: none; color: var(--ink); }
+.leaf p { margin: 0; }
+.leaf .eyebrow { font: 600 var(--t-s)/1.3 var(--f-ui); color: var(--ink-3); }
+.leaf .note { font: 500 var(--t-s)/1.45 var(--f-ui); color: var(--ink-3); max-width: 32ch; }
+.title-leaf { justify-content: space-between; padding-block: calc(var(--lh) * 3) var(--lh); }
+.title-leaf .tl { display: grid; gap: 16px; justify-items: center; }
+.leaf .tl-author { font: 600 var(--t-m)/1.3 var(--f-ui); color: var(--ink-2); }
+.leaf .tl-title { margin: 0; max-width: 94%; font: var(--wB, 620) calc(var(--fs) * 2.3)/1.06 var(--f-text, var(--f-book)); font-variation-settings: var(--fvs, "wght" 400,) "opsz" 72, "wght" var(--wB, 620); text-wrap: balance; }
+.leaf .tl-sub { font: var(--wb, 400) calc(var(--fs) * 1.1)/1.3 var(--f-text, var(--f-book)); color: var(--ink-2); }
+.leaf .tl-hint { font: 500 var(--t-s)/1.5 var(--f-ui); color: var(--ink-3); max-width: 34ch; }
+.leaf .co-finis { font: var(--wB, 600) calc(var(--fs) * 2)/1 var(--f-text, var(--f-book)); font-variation-settings: var(--fvs, "wght" 400,) "opsz" 60, "wght" var(--wB, 600); }
+.leaf .co-title { font: 600 var(--t-m)/1.3 var(--f-ui); color: var(--ink-2); }
+.leaf .co-stich { font-variant-numeric: oldstyle-nums; color: var(--ink-2); }
+
+/* rich blocks (reader/rich.ts): drawn in ink on transparent; on a dark paper the ink is
+   turned light, the hues kept */
+.dark-paper figure.img.rich img { filter: invert(1) hue-rotate(180deg); }

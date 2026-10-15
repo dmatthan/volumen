@@ -1,0 +1,21 @@
+# Unicode ranges in each bundled font's core file (scripts/subset-fonts.py); everything
+# else the font has goes to its .ext file, loaded only for a book that uses it. The
+# engine reads this too (a book "needs ext" when it has a character outside these).
+0000-024F
+0259
+02B0-02FF
+0300-036F
+1E00-1EFF
+2000-206F
+20A0-20CF
+2100-215F
+2190-2199
+2212
+2215
+221E
+2260
+2264-2265
+25CA
+FB00-FB06
+FEFF
+FFFD

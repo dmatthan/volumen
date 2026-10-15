@@ -1,0 +1,43 @@
+// The web app and its sharing service, as one Worker (Cloudflare Workers with static
+// assets; see docs/PLAN.md, M2). Built for the Free plan's hard limits: nothing here can
+// be billed. The app's files are static assets (free, and never run this Worker); only
+// /api/* runs it, and it keeps everything in D1, which refuses work past its free limits
+// rather than charging for it.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "volumen",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // to serve it at a domain of your own: "routes": [{ "pattern": "example.org", "custom_domain": true }]
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "../app/dist-web",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "volumen",
+      // filled in by scripts/deploy.sh when it makes the database
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // per address (and per writer), per minute; loose by design (counted per location):
+  // the daily caps in src/limits.ts are the exact ones
+  "ratelimits": [
+    { "name": "RL_READ", "namespace_id": "7101", "simple": { "limit": 30, "period": 60 } },
+    { "name": "RL_WRITE", "namespace_id": "7102", "simple": { "limit": 12, "period": 60 } },
+    { "name": "RL_AUTH", "namespace_id": "7103", "simple": { "limit": 10, "period": 60 } }
+  ],
+  // expired books, sessions and invitations go once a day
+  "triggers": { "crons": ["17 3 * * *"] },
+  "vars": {
+    // Turnstile's site key (public); the secret is a secret (`wrangler secret put
+    // TURNSTILE_SECRET`). Local development takes both from .dev.vars.
+    "TURNSTILE_SITEKEY": ""
+  },
+  "observability": { "enabled": false }
+}

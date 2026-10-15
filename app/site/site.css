@@ -1,0 +1,124 @@
+/* volumen.page: the page and the privacy page (the app itself is at /read). Fonts are
+   the app's own, from this site. Light and dark follow the device. */
+@font-face { font-family: "Literata"; src: url("/fonts/Literata.ttf") format("truetype"); font-weight: 100 1000; font-style: normal; font-display: swap; }
+@font-face { font-family: "Literata"; src: url("/fonts/Literata-Italic.ttf") format("truetype"); font-weight: 100 1000; font-style: italic; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("/fonts/Inter.ttf") format("truetype"); font-weight: 100 1000; font-style: normal; font-display: swap; }
+
+:root {
+  color-scheme: light dark;
+  --bg: #eef0f2; --surface: #fafaf9; --paper: #f6f4ee; --paper-edge: #dcd8ce;
+  --ink: #1d2129; --ink2: #474c56; --ink3: #5f646f; --rule: #d5d8dd;
+  --accent: #2f56a3; --btn: #1d2129; --btn-ink: #fafaf9;
+  --r1: #c8473a; --r1t: #a3392d; --r2: #13848a; --r2t: #0d6a6f; --r3: #7f4cb5; --r3t: #663a96;
+  --serif: "Literata", Georgia, serif;
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a; --surface: #1a1d22; --paper: #1f2228; --paper-edge: #30343b;
+    --ink: #e4ded1; --ink2: #bdb7ab; --ink3: #9d988d; --rule: #2d3137;
+    --accent: #a9bcec; --btn: #e4ded1; --btn-ink: #14161a;
+    --r1: #e07d6f; --r1t: #ec9a8e; --r2: #4fb9be; --r2t: #79cdd1; --r3: #b28fe3; --r3t: #c6a9ee;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.6 var(--sans); }
+a { color: var(--accent); text-underline-offset: 0.18em; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+.wrap { max-width: 1160px; margin: 0 auto; padding-left: 24px; padding-right: 24px; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 24px; padding-top: 24px; padding-bottom: 20px; }
+.mark { display: inline-flex; align-items: baseline; gap: 12px; color: var(--ink); text-decoration: none; }
+.mark b { font: 500 25px/1.2 var(--serif); }
+.mark i { font: italic 400 16px/1.2 var(--serif); color: var(--ink3); }
+/* (the stress mark's own spacing is wide in Literata's italic) */
+.mark .st { margin: 0 -0.12em 0 -0.04em; }
+.top nav { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 15px; font-weight: 500; }
+.top nav a { color: var(--ink2); text-decoration: none; }
+.top nav a:hover { color: var(--ink); }
+
+/* the opening */
+.hero { display: flex; flex-wrap: wrap; gap: 48px 56px; align-items: center; padding-top: 40px; padding-bottom: 72px; }
+.hero .say { flex: 1 1 340px; display: flex; flex-direction: column; gap: 20px; }
+h1 { margin: 0; font: 400 clamp(34px, 3.9vw, 50px)/1.12 var(--serif); letter-spacing: -0.012em; }
+.lede { margin: 0; max-width: 44ch; font-size: 17px; line-height: 1.65; color: var(--ink2); }
+.acts { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.btn { display: inline-flex; align-items: center; min-height: 46px; padding: 0 20px; border-radius: 8px; border: 1px solid var(--rule); background: transparent; color: var(--ink); font: 600 15px/1 var(--sans); text-decoration: none; cursor: pointer; }
+.btn.main { background: var(--btn); border-color: var(--btn); color: var(--btn-ink); }
+
+/* the manuscript */
+figure { flex: 1.25 1 480px; min-width: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.page { background: var(--paper); border: 1px solid var(--paper-edge); border-radius: 12px; padding: clamp(22px, 3.2vw, 40px) clamp(22px, 3.2vw, 40px) clamp(22px, 3.2vw, 40px) clamp(34px, 3.6vw, 48px); display: flex; flex-direction: column; gap: 16px; }
+.head { margin: 0 0 4px; font-size: 12px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink3); }
+.pair { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: flex-start; }
+.text { flex: 1 1 300px; min-width: 0; margin: 0; font: 400 17px/1.7 var(--serif); color: var(--ink); text-align: justify; hyphens: auto; -webkit-hyphens: auto; }
+.text + .text, .pair + .pair .text { text-indent: 1.4em; }
+.sc { font-variant: small-caps; letter-spacing: 0.04em; }
+.u { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; text-decoration-skip-ink: auto; }
+.u1 { text-decoration-color: var(--r1); } .u2 { text-decoration-color: var(--r2); }
+.marked { flex: 1 1 300px; min-width: 0; display: flex; margin-left: -20px; }
+.marked::before { content: ""; flex: 0 0 3px; border-radius: 2px; background: var(--r3); margin-right: 17px; }
+.marked .text { flex: 1 1 auto; }
+.notes { flex: 0 1 170px; display: flex; flex-direction: column; gap: 14px; }
+.note { margin: 0; padding-left: 12px; border-left: 2px solid; font-size: 14px; line-height: 1.45; color: var(--ink2); }
+.note span { display: block; font-size: 12px; font-weight: 600; }
+.n1 { border-color: var(--r1); } .n1 span { color: var(--r1t); }
+.n2 { border-color: var(--r2); } .n2 span { color: var(--r2t); }
+.n3 { border-color: var(--r3); } .n3 span { color: var(--r3t); }
+figcaption { font-size: 13px; line-height: 1.5; color: var(--ink3); }
+/* on a phone the figure's lines are short: a browser justifies them with gaps (the
+   reader's own typesetter does not), so they are set ragged; notes go under their
+   paragraph, at its width */
+@media (max-width: 600px) {
+  .text { text-align: left; }
+  .notes { flex-basis: 100%; }
+}
+
+/* sections */
+.part { border-top: 1px solid var(--rule); }
+.part.alt { background: var(--surface); border-bottom: 1px solid var(--rule); }
+.part > .wrap { padding-top: 64px; padding-bottom: 64px; display: flex; flex-direction: column; gap: 32px; }
+.label { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink3); }
+.three { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 36px 44px; }
+.three.four { grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); }
+.three > * { display: flex; flex-direction: column; gap: 10px; }
+h3 { margin: 0; font: 500 22px/1.3 var(--serif); }
+.three p, .install p { margin: 0; font-size: 16px; line-height: 1.65; color: var(--ink2); }
+.num { font: 400 22px/1 var(--serif); color: var(--ink3); }
+
+/* developers */
+.soon { display: inline-block; margin-left: 6px; padding: 2px 8px; border: 1px solid var(--rule); border-radius: 999px; font: 600 11px/1.5 var(--sans); letter-spacing: 0.04em; color: var(--ink3); vertical-align: middle; white-space: nowrap; }
+.code { margin: 4px 0 0; padding: 12px 14px; overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); font: 13px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--ink2); }
+.part.alt .code { background: var(--bg); }
+
+/* installing */
+.os { width: 18px; height: 18px; flex: 0 0 18px; fill: currentColor; margin-right: 9px; }
+.install { display: flex; flex-wrap: wrap; gap: 32px 44px; align-items: flex-start; }
+.here, .desk { flex: 1 1 380px; display: flex; flex-direction: column; gap: 14px; }
+.desk { padding: 26px; border: 1px solid var(--rule); border-radius: 12px; background: var(--bg); }
+.here p, .desk p { max-width: 54ch; }
+.downloads { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn.off { cursor: default; color: var(--ink3); }
+.btn.off.mine { color: var(--ink); border-color: var(--ink3); }
+.others { font-size: 15px; color: var(--ink2); }
+.others summary { cursor: pointer; color: var(--accent); font-weight: 500; }
+.others dl { margin: 12px 0 0; display: flex; flex-direction: column; gap: 8px; }
+.others dt { font-weight: 600; color: var(--ink); }
+.others dd { margin: 0; }
+[hidden] { display: none !important; }
+
+/* footer */
+.foot { border-top: 1px solid var(--rule); }
+.foot .wrap { display: flex; flex-wrap: wrap; gap: 10px 28px; padding-top: 28px; padding-bottom: 44px; font-size: 14px; line-height: 1.5; color: var(--ink3); }
+.foot .name { font: 400 16px/1.5 var(--serif); color: var(--ink); }
+
+/* the privacy page */
+.prose { max-width: 680px; padding-top: 32px; padding-bottom: 72px; }
+.prose h1 { font-size: clamp(32px, 3.4vw, 42px); margin-bottom: 28px; }
+.prose h2 { margin: 36px 0 10px; font: 500 21px/1.3 var(--serif); }
+.prose p { margin: 0 0 14px; color: var(--ink2); line-height: 1.7; }
