@@ -127,10 +127,10 @@
           <p>One Cloudflare Worker and a D1 database, written to stay inside the free plan. It holds only sealed bytes; one script deploys your own.</p>
         </div>
         <div>
-          <h3>Embedding <span class="soon">Coming soon</span></h3>
-          <p>A book on your own page, served from your own site: a free sample on a blog, a set text on a course page.</p>
-          <pre class="code"><code>&lt;iframe title="Sample chapter"
-  src="https://volumen.page/embed#src=/books/sample.epub"&gt;
+          <h3>Embedding</h3>
+          <p>A book on your own page, read in place: a free sample on a blog, a set text on a course page. The file stays on your site, which must let other sites read it (<code>Access-Control-Allow-Origin</code>; GitHub Pages sends it already).</p>
+          <pre class="code"><code>&lt;iframe title="A sample chapter" style="width: 100%; height: 640px; border: 0"
+  src="https://volumen.page/embed#src=https://example.org/sample.epub"&gt;
 &lt;/iframe&gt;</code></pre>
         </div>
       </div>

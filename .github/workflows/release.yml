@@ -1,0 +1,72 @@
+# The desktop app for Linux, macOS and Windows, built on each and attached to a GitHub
+# release under fixed names, so https://github.com/dmatthan/volumen/releases/latest/download/<name>
+# always gives the newest. Runs for a tag v*, or by hand (a draft, for checking).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  WASM_BINDGEN: "0.2.129"
+  TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --title "$TAG" --notes "Volumen $TAG" --target "$GITHUB_SHA"
+        env: { GH_TOKEN: "${{ github.token }}" }
+
+  build:
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, bundles: "deb,appimage", target: "" }
+          - { os: macos-latest, bundles: "dmg", target: "universal-apple-darwin" }
+          - { os: windows-latest, bundles: "nsis", target: "" }
+    runs-on: ${{ matrix.os }}
+    defaults: { run: { shell: bash } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown${{ matrix.target == 'universal-apple-darwin' && ',aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with: { tool: "wasm-bindgen@${{ env.WASM_BINDGEN }}" }
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf
+      # the interface's engine for the web build (the app's types need it), then the app
+      - run: scripts/build-wasm.sh
+      - run: npm --prefix app ci
+      - run: npx --prefix app tauri build --bundles ${{ matrix.bundles }} ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+      - name: Attach, under fixed names
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          out=target/${{ matrix.target }}/release/bundle
+          [ -d "$out" ] || out=target/release/bundle
+          mkdir -p dist
+          case "$RUNNER_OS" in
+            Linux)   cp "$out"/appimage/*.AppImage dist/Volumen-linux-x86_64.AppImage
+                     cp "$out"/deb/*.deb dist/Volumen-linux-amd64.deb ;;
+            macOS)   cp "$out"/dmg/*.dmg dist/Volumen-macos.dmg ;;
+            Windows) cp "$out"/nsis/*-setup.exe dist/Volumen-windows-x64-setup.exe ;;
+          esac
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+        env: { GH_TOKEN: "${{ github.token }}" }

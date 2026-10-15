@@ -16,6 +16,7 @@ import { Finder } from './find.svelte';
 import { notebookOf, saveDigest } from './notebook';
 import { Feedback, parseNotes, targetOf, notesFile } from './feedback';
 import { sendQuietly } from '../core/service';
+import { embedded } from '../core/embed';
 import { isMine, restoreInto, restored } from './restore';
 import { hint } from './hints';
 
@@ -546,7 +547,8 @@ export class Reader {
   }
 
   close() {
-    if (!this.book) return;
+    // (an embedded book is all there is: there is no library to go back to)
+    if (!this.book || embedded) return;
     this.flush();
     this.gen++;
     this.motion.jump(0);

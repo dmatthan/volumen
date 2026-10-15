@@ -31,7 +31,11 @@ npm --prefix app run dev              # http://localhost:5193
 cargo test                            # crates
 cargo run -p vol-ingest --example dump -- book.epub   # what a file imports as
 scripts/run.sh                        # desktop app
+npx --prefix app tauri build          # desktop installers (target/release/bundle)
 ```
+
+Releases are built for Linux, macOS and Windows by `.github/workflows/release.yml` when a
+`v*` tag is pushed.
 
 `VOLUMEN_WEB=1 npm --prefix app run build` builds the site as deployed: the reader at
 `/read`, the page at `/`. Without it the reader is at `/`, as the desktop app loads it.
@@ -51,7 +55,16 @@ scripts/service.sh invite "Name"      # an invitation link for a writer
 
 ## Embedding
 
-Planned, not yet available.
+One book, read in place on another site:
+
+```html
+<iframe title="A sample chapter" style="width: 100%; height: 640px; border: 0"
+  src="https://volumen.page/embed#src=https://example.org/sample.epub"></iframe>
+```
+
+The file is fetched by the browser from its own site, which must send
+`Access-Control-Allow-Origin` (GitHub Pages does). `/embed` is the only page that may be
+framed. A self-hosted copy of the web build serves `/embed` the same way.
 
 ## License
 

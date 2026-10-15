@@ -19,7 +19,7 @@ function serviceWorker(): Plugin {
     generateBundle(_, bundle) {
       const files = Object.keys(bundle).filter(f => !f.endsWith('.map'));
       // (pages by their address, not their file: a host may redirect /x.html to /x)
-      const shell = [START, ...files.filter(f => !f.endsWith('.html')).map(f => '/' + f), '/app/manifest.webmanifest'];
+      const shell = [START, ...(WEB ? ['/embed'] : []), ...files.filter(f => !f.endsWith('.html')).map(f => '/' + f), '/app/manifest.webmanifest'];
       const version = createHash('sha256').update(files.sort().join('\n')).digest('hex').slice(0, 12);
       const src = readFileSync(new URL('./sw.js', import.meta.url), 'utf8').replace('__VERSION__', version).replace('__SHELL__', JSON.stringify(shell)).replace('__START__', START);
       this.emitFile({ type: 'asset', fileName: 'sw.js', source: src });
@@ -36,7 +36,11 @@ function website(): Plugin {
     enforce: 'post',
     generateBundle(_, bundle) {
       const app = bundle['index.html'];
-      if (app) { delete bundle['index.html']; app.fileName = 'read.html'; bundle['read.html'] = app; }
+      if (app) {
+        delete bundle['index.html']; app.fileName = 'read.html'; bundle['read.html'] = app;
+        // the same app, for a book embedded in another site's page (core/embed.ts)
+        if (app.type === 'asset') this.emitFile({ type: 'asset', fileName: 'embed.html', source: app.source });
+      }
       const dir = new URL('./site/', import.meta.url);
       for (const f of readdirSync(dir)) this.emitFile({ type: 'asset', fileName: f, source: readFileSync(new URL(f, dir)) });
     },

@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import { linkOf, canSeal, unseal } from '../core/share';
   import { fetchSealed, joinedOf } from '../core/service';
+  import { embedded, embeddedBook } from '../core/embed';
   import type { Core } from '../core/types';
   import { ui, Reader, toast } from '../reader/reader.svelte';
   import { MapCtl } from '../reader/map.svelte';
@@ -68,6 +69,8 @@
   let shown = 0, popped = 0, unwinding = 0;
   $effect(() => {
     const n = layers();
+    // (in another site's page, the frame's history would be the host page's back button)
+    if (embedded) return;
     if (n > shown) for (let i = shown; i < n; i++) history.pushState({ vol: i + 1 }, '');
     else if (n < shown) {
       // closed by back: its entry is gone already; closed by the app: take it back
@@ -136,12 +139,20 @@
       toast(`Couldn’t open the book you were sent: ${(e as Error).message}`, 6000);
     }
   }
-  openFromLink();
-  addEventListener('hashchange', openFromLink);
+  // one book in another site's page (core/embed.ts), or the app
+  let embedError = $state('');
+  if (embedded) {
+    // svelte-ignore state_referenced_locally
+    embeddedBook(core).then(async r => { if ('error' in r) embedError = r.error; else await reader.open(r.id); })
+      .catch(e => { embedError = `The book could not be opened (${(e as Error).message}).`; });
+  } else {
+    openFromLink();
+    addEventListener('hashchange', openFromLink);
+  }
 
   // the web build's first run: the sample book, added while the library already shows
   // svelte-ignore state_referenced_locally
-  if ('importSample' in core) {
+  if ('importSample' in core && !embedded) {
     // svelte-ignore state_referenced_locally
     const web = core as ReturnType<typeof import('../core/web').webCore>;
     import('../core/web').then(({ seedSample }) => seedSample(web))
@@ -199,7 +210,11 @@
 <svelte:window onkeydown={onKey} onkeyup={e => reader.keyUp(e)} onblur={() => reader.blur()} />
 
 <div class="app">
-  <Library bind:this={library} {core} {reader} hidden={ui.view !== 'library'} />
+  {#if embedded}
+    {#if ui.view !== 'reader'}<p class="failed embed-wait" role="status">{embedError || 'Opening the book…'}</p>{/if}
+  {:else}
+    <Library bind:this={library} {core} {reader} hidden={ui.view !== 'library'} />
+  {/if}
   <ReaderView {reader} {map} hidden={ui.view !== 'reader'} bind:chip bind:findBar />
   {#if ui.busy}<div class="busy" role="status">{ui.busy}</div>{/if}
   <Toast />

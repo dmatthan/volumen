@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { embedded } from '../core/embed';
   import { isNotesMarkdown } from '../reader/notesmd';
   import { isWebAnno } from '../reader/webanno';
   import { onMount, untrack } from 'svelte';
@@ -64,9 +65,13 @@
   <header class="bar" class:away={(away && ui.sheet !== 'settings') || reader.finder.open} bind:this={bar} onfocusin={show} onfocusout={() => hideSoon()}
     onpointerup={e => { if (away && e.pointerType !== 'mouse') { show(); hideSoon(4000); } }}>
     <div class="side">
-      <button class="ibtn" onclick={() => reader.close()} aria-label="Back to the library (Q)">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5" /></svg><span class="lbl">Library</span>
-      </button>
+      {#if embedded}
+        <a class="ibtn home" href="https://volumen.page" target="_blank" rel="noopener" aria-label="Volumen (opens in a new tab)"><span class="lbl">Volumen</span></a>
+      {:else}
+        <button class="ibtn" onclick={() => reader.close()} aria-label="Back to the library (Q)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5" /></svg><span class="lbl">Library</span>
+        </button>
+      {/if}
     </div>
     <div class="runhead" aria-live="polite">{ui.runhead}</div>
     <div class="side right">
@@ -116,4 +121,7 @@
   .side, .runhead { position: relative; }
   .runhead { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; font: 600 var(--t-m)/1 var(--f-ui); color: var(--ink-3); }
   @media (max-width: 639px) { .lbl { display: none; } }
+  /* (embedded: the way to Volumen itself, named on a phone too) */
+  .ibtn.home { text-decoration: none; font-family: var(--f-book); }
+  @media (max-width: 639px) { .ibtn.home .lbl { display: inline; } }
 </style>
