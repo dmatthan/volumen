@@ -505,6 +505,22 @@ async fn image_bytes(id: String, idx: u32, app: State<'_, App>) -> Res<Response>
     Ok(Response::new(found.map(|(_, b)| b).unwrap_or_default()))
 }
 
+/// Readers' notes put into a Word file as Word comments (`vol_engine::annotate_docx`).
+/// Both ways one body: a u32 length (big-endian), that much JSON (the notes; the
+/// report), then the Word file.
+#[tauri::command]
+async fn annotate_docx(request: Request<'_>) -> Res<Response> {
+    let tauri::ipc::InvokeBody::Raw(body) = request.body() else { return Err("expected the notes and a Word file".into()) };
+    let n = body.get(..4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize).ok_or("damaged request")?;
+    let notes = std::str::from_utf8(body.get(4..4 + n).ok_or("damaged request")?).map_err(|e| e.to_string())?;
+    let docx = &body[4 + n..];
+    let (out, report) = guarded(|| vol_engine::annotate_docx(docx, notes))?;
+    let mut answer = (report.len() as u32).to_be_bytes().to_vec();
+    answer.extend_from_slice(report.as_bytes());
+    answer.extend_from_slice(&out);
+    Ok(Response::new(answer))
+}
+
 /// Replaces a book's cover with a smaller one (the library's thumbnail: `Library.svelte`).
 #[tauri::command]
 async fn set_cover(request: Request<'_>, app: State<'_, App>) -> Res<()> {
@@ -725,7 +741,7 @@ fn main() {
                 responder.respond(res.unwrap());
             });
         })
-        .invoke_handler(tauri::generate_handler![import_bytes, pick_book, open_book, layout, find, search_library, place_notes, font_needs, probe, library, remove_book, state_load, state_put, cover, set_cover, set_image_sizes, image_bytes, reimport, source_name, source_bytes, picked_bytes, save_text, save_bytes, system_families, load_family, font_file, desktop_palette, selftest_mode, selftest_arg, dev_corpus, dev_zoom, dev_log, dev_quit, quit_now])
+        .invoke_handler(tauri::generate_handler![import_bytes, pick_book, open_book, layout, find, search_library, place_notes, font_needs, probe, library, remove_book, state_load, state_put, cover, set_cover, set_image_sizes, image_bytes, annotate_docx, reimport, source_name, source_bytes, picked_bytes, save_text, save_bytes, system_families, load_family, font_file, desktop_palette, selftest_mode, selftest_arg, dev_corpus, dev_zoom, dev_log, dev_quit, quit_now])
         .on_window_event(|window, event| {
             // closing goes through the frontend, which saves and releases its GL context
             // first; if it does not answer within two seconds the app exits anyway

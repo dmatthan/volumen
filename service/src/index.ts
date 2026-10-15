@@ -3,7 +3,7 @@
 import { Fail, json, now, DAY } from './http';
 import { sameSite } from './limits';
 import { writerOf, mustWriter, registerBegin, registerFinish, loginBegin, loginFinish, logout } from './auth';
-import { list, publish, renew, withdraw, inbox, readerNotes, fetchBook, sendNotes, drop, getVault, putVault } from './books';
+import { list, publish, renew, withdraw, inbox, readerNotes, fetchBook, sendNotes, drop, getVault, putVault, newDraft, bookVersion } from './books';
 
 type Route = [method: string, pattern: RegExp, handle: (env: Env, req: Request, m: string[]) => Promise<Response>];
 
@@ -19,6 +19,8 @@ const ROUTES: Route[] = [
   ['POST', /^\/api\/auth\/logout$/, logout],
   ['GET', /^\/api\/shares$/, async (env, req) => list(env, await mustWriter(env, req))],
   ['POST', /^\/api\/shares$/, async (env, req) => publish(env, req, await mustWriter(env, req))],
+  ['PUT', /^\/api\/shares\/([\w-]+)\/draft$/, async (env, req, m) => newDraft(env, req, await mustWriter(env, req), m[1])],
+  ['GET', /^\/api\/books\/([\w-]+)\/version$/, (env, req, m) => bookVersion(env, req, m[1])],
   ['POST', /^\/api\/shares\/([\w-]+)\/renew$/, async (env, req, m) => renew(env, req, await mustWriter(env, req), m[1])],
   ['DELETE', /^\/api\/shares\/([\w-]+)$/, async (env, req, m) => withdraw(env, req, await mustWriter(env, req), m[1])],
   ['GET', /^\/api\/vault$/, async (env, req) => getVault(env, await mustWriter(env, req))],

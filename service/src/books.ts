@@ -65,6 +65,42 @@ export async function publish(env: Env, req: Request, w: Writer): Promise<Respon
   return json({ id, expires });
 }
 
+/** A new draft to the same link (D8): sealed with the link's own key by the app, it takes
+ *  the place of the one before, all at once (a reader fetching meanwhile gets one or the
+ *  other, whole), and the book's version goes up. */
+export async function newDraft(env: Env, req: Request, w: Writer, id: string): Promise<Response> {
+  await rate(env.RL_WRITE, req, 'w:' + w.id);
+  const b = await owned(env, w, id);
+  const size = Number(req.headers.get('content-length') ?? NaN);
+  const mine = await env.DB.prepare('SELECT coalesce(sum(size), 0) AS bytes FROM books WHERE writer = ?1').bind(w.id).first<{ bytes: number }>();
+  if ((mine?.bytes ?? 0) - b.size + (size || 0) > w.max_bytes) throw new Fail(403, 'That would pass the room you have: withdraw a book first.');
+  if ((await stored(env.DB)) - b.size + (size || 0) > LIMITS.totalBytes) throw new Fail(503, 'The service is full just now.');
+  const data = await raw(req, LIMITS.bookBytes);
+  if (!startsWith(data, BOOK_MAGIC)) throw new Fail(400, 'Only books sealed by the app are kept here.');
+  await count(env.DB, 'upload');
+  // the new pieces beside the old (numbered from NEXT), then swapped in one batch
+  const NEXT = 100_000, chunks = Math.ceil(data.length / LIMITS.chunk);
+  await env.DB.prepare('DELETE FROM chunks WHERE book = ?1 AND n >= ?2').bind(id, NEXT).run();
+  for (let i = 0; i < chunks; i++) {
+    await env.DB.prepare('INSERT INTO chunks (book, n, data) VALUES (?1, ?2, ?3)').bind(id, NEXT + i, data.subarray(i * LIMITS.chunk, (i + 1) * LIMITS.chunk)).run();
+  }
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM chunks WHERE book = ?1 AND n < ?2').bind(id, NEXT),
+    env.DB.prepare('UPDATE chunks SET n = n - ?2 WHERE book = ?1').bind(id, NEXT),
+    env.DB.prepare('UPDATE books SET size = ?2, chunks = ?3, version = version + 1 WHERE id = ?1').bind(id, data.length, chunks),
+  ]);
+  const v = await env.DB.prepare('SELECT version FROM books WHERE id = ?1').bind(id).first<{ version: number }>();
+  return json({ version: v?.version ?? 1 });
+}
+
+/** The version of a shared book, for a reader to know there is a newer draft. */
+export async function bookVersion(env: Env, req: Request, id: string): Promise<Response> {
+  await rate(env.RL_READ, req);
+  const b = await live(env, id);
+  const v = await env.DB.prepare('SELECT version FROM books WHERE id = ?1').bind(b.id).first<{ version: number }>();
+  return json({ version: v?.version ?? 1 });
+}
+
 export async function renew(env: Env, req: Request, w: Writer, id: string): Promise<Response> {
   await rate(env.RL_WRITE, req, 'w:' + w.id);
   await owned(env, w, id);

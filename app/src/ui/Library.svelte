@@ -5,6 +5,9 @@
   import { shell } from '../core/shell';
   import ShareSheet from './ShareSheet.svelte';
   import InviteSheet from './InviteSheet.svelte';
+  import DraftSheet from './DraftSheet.svelte';
+  import { earlierDraft } from '../reader/draft';
+  import { droppedFiles } from './files';
   import { collectNotes, syncShares, hasVault } from '../core/service';
   import { isTauri } from '../core/shell';
   import { stale, reread } from '../reader/reread';
@@ -74,7 +77,7 @@
   import LibraryResults from './LibraryResults.svelte';
   import { fold } from '../reader/notebook';
   import { hint } from '../reader/hints';
-  import { parseNotes, targetOf, receive } from '../reader/feedback';
+  import { parseNotes, targetOf, receive, type NotesFile } from '../reader/feedback';
   import { isNotesMarkdown } from '../reader/notesmd';
   import { isWebAnno } from '../reader/webanno';
   import { isMine, restoreOwn, restored } from '../reader/restore';
@@ -86,6 +89,7 @@
   let file: HTMLInputElement;
   let removing: LibEntry | null = $state(null);
   let sharing: LibEntry | null = $state(null);
+  let draftOf: { from: LibEntry; to: LibEntry } | null = $state(null);
   /** The shelf shown: one that fills itself, or a collection. */
   loadShelves();
   let shelf = $state(kv.get<string>('shelf', 'all'));
@@ -240,24 +244,34 @@
   /** Another reader's notes: kept against their book, shown when it opens. */
   /** A notes file (JSON, or Markdown exported from a notebook): one's own notes are put
    *  back on their books; another reader's are kept as feedback on theirs. */
-  async function takeNotes(text: string) {
-    const files = parseNotes(text);
-    if (typeof files === 'string') { toast(files, 4200); return; }
+  async function takeNotes(texts: string[], names: string[] = []) {
+    // every file read first: a folder from a dozen readers is one import, said once
+    const notOk: string[] = [];
+    const all: NotesFile[] = [];
+    texts.forEach((t, i) => { const r = parseNotes(t); if (typeof r === 'string') notOk.push(names[i] ?? r); else all.push(...r); });
     const said: string[] = [];
-    for (const f of files) {
+    const theirs = new Map<string, { title: string; readers: Map<string, string>; notes: number }>();
+    const missing = new Map<string, number>();
+    for (const f of all) {
       const t = targetOf(f, books);
-      if (!t) { said.push(`These notes are for “${f.book.title}”, which is not in your library. Add the book first.`); continue; }
+      if (!t) { missing.set(f.book.title, (missing.get(f.book.title) ?? 0) + 1); continue; }
       if (isMine(f)) {
         try { said.push(restored(t.title, await restoreOwn(f, t.id, core))); }
         catch (e) { said.push(`Your notes on “${t.title}” could not be put back: ${(e as Error).message}`); }
         // (that read the book in the engine; no book is open here)
         core.idle?.();
+        continue;
       }
-      else {
-        receive(f, t.id);
-        said.push(`${f.from.name || 'A reader'}’s notes on “${t.title}”: ${f.notes.length}. Open the book to see them (its notebook, in the map, has a Feedback side).`);
-      }
+      if (!receive(f, t.id)) continue;
+      const b = theirs.get(t.id) ?? { title: t.title, readers: new Map<string, string>(), notes: 0 };
+      b.readers.set(f.from.id, f.from.name || 'a reader'); b.notes += f.notes.length;
+      theirs.set(t.id, b);
     }
+    const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+    for (const b of theirs.values()) said.push(`Notes from ${b.readers.size === 1 ? [...b.readers.values()][0] : n(b.readers.size, 'reader', 'readers')} on “${b.title}”: ${n(b.notes, 'note', 'notes')}. Open the book to see them beside the text.`);
+    for (const [title, k] of missing) said.push(`${n(k, 'file is', 'files are')} for “${title}”, which is not in your library: add the book, then the notes again.`);
+    if (notOk.length) said.push(`${n(notOk.length, 'file was', 'files were')} not notes${notOk.length <= 3 ? ` (${notOk.join(', ')})` : ''}.`);
+    if (!said.length) said.push('These notes are here already.');
     const m = said.join(' ');
     toast(m, Math.max(5200, m.length * 60));
     ui.libVersion++;
@@ -283,18 +297,25 @@
   }
 
   async function addFiles(files: FileList | File[]) {
+    // books first, then notes: a folder holding a manuscript and its readers' notes is
+    // taken whole
+    const notes: string[] = [], names: string[] = [];
     for (const f of files) {
       if (/\.vbackup$/i.test(f.name) || (f.size > 10 && await isBackup(f))) { await restoreFrom(f); return; }
-      if (/\.vnotes$/i.test(f.name)) { await takeNotes(await f.text()); continue; }
+      if (/\.vnotes$/i.test(f.name)) { notes.push(await f.text()); names.push(f.name); continue; }
       // notes exported as Markdown (rather than a manuscript), or as Web Annotations
       if (/\.(md|markdown|txt|json|jsonld)$/i.test(f.name) && f.size < 8e6) {
         const text = await f.text();
-        if (isNotesMarkdown(text) || isWebAnno(text)) { await takeNotes(text); continue; }
+        if (isNotesMarkdown(text) || isWebAnno(text)) { notes.push(text); names.push(f.name); continue; }
+        if (/\.(json|jsonld)$/i.test(f.name)) { notes.push(text); names.push(f.name); continue; }
       }
       toast(`Opening ${f.name}…`, 8000);
       try {
         const e = await core.importFile(new Uint8Array(await f.arrayBuffer()), f.name);
         focusId = e.id;
+        // a new draft of a book here already: offered its notes, feedback and share
+        const before = draftOf ? null : earlierDraft(e, await core.library());
+        if (before) draftOf = { from: before, to: e };
         if (mine) addToShelf(mine.id, e.id);
         toast(`Added “${e.title}”.`, 3600);
       } catch (err) {
@@ -302,6 +323,8 @@
         toast(m, Math.max(5200, m.length * 70));
       }
     }
+    if (notes.length) { await load(); await takeNotes(notes, names); }
+    if (draftOf) ui.sheet = 'draft';
     await load();
     restoreFocus();
   }
@@ -309,7 +332,7 @@
   function add() {
     if (core.pick) {
       core.pick().then(async p => {
-        if (p?.kind === 'notes') { takeNotes(p.text); return; }
+        if (p?.kind === 'notes') { takeNotes([p.text]); return; }
         if (p?.kind === 'backup') { restoreFrom(p.file as File); return; }
         const e = p?.entry;
         if (e) { focusId = e.id; if (mine) addToShelf(mine.id, e.id); toast(`Added “${e.title}”.`, 3600); await load(); restoreFocus(); }
@@ -366,7 +389,7 @@
 <section class="shelf" {hidden} aria-label="Library"
   ondragover={e => { e.preventDefault(); dropping = true; }}
   ondragleave={() => (dropping = false)}
-  ondrop={e => { e.preventDefault(); dropping = false; if (e.dataTransfer?.files.length) addFiles(e.dataTransfer.files); }}
+  ondrop={e => { e.preventDefault(); dropping = false; if (e.dataTransfer?.items.length) droppedFiles(e.dataTransfer).then(addFiles); }}
   class:dropping>
   <header class="head">
     <div class="title">
@@ -438,7 +461,7 @@
   <p class="foot" hidden={view !== 'books'}>Books stay on this device. <button class="link-btn" onclick={backUp}>Back up the library…</button> (Restore one by adding its file.)<span class="keys-only"> Use the arrow keys or H J K L to move, Enter to open, A for a book’s collections, [ and ] for the shelves, X to remove.</span></p>
   <!-- (a phone's picker greys out what it cannot match to a type it knows, notes files
        among them; there every file may be chosen, and the importer says what it is) -->
-  <input type="file" bind:this={file} accept={touchUI() ? undefined : '.epub,.docx,.md,.markdown,.txt,.vnotes,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain'} multiple
+  <input type="file" bind:this={file} accept={touchUI() ? undefined : '.epub,.docx,.md,.markdown,.txt,.vnotes,.json,.jsonld,.vbackup,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain'} multiple
     onchange={e => { const fs = (e.target as HTMLInputElement).files; if (fs?.length) addFiles([...fs]); (e.target as HTMLInputElement).value = ''; }} hidden />
 </section>
 
@@ -474,6 +497,9 @@
 {/if}
 {#if !hidden && ui.sheet === 'share' && sharing}
   <ShareSheet {core} book={sharing} onclose={() => { ui.sheet = null; sharing = null; }} />
+{/if}
+{#if !hidden && ui.sheet === 'draft' && draftOf}
+  <DraftSheet {core} from={draftOf.from} to={draftOf.to} remove={remove} onclose={() => { ui.sheet = null; draftOf = null; }} />
 {/if}
 {#if !hidden && ui.sheet === 'invite' && ui.invite}
   <InviteSheet {core} />

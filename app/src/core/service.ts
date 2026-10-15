@@ -255,7 +255,7 @@ export async function personToken(el: HTMLElement, sitekey: string, action: stri
 
 /** What the writer keeps about a book they shared (kv `share.<book>`): its id at the
  *  service and its link's key (which the service never sees). */
-export interface Shared { id: string; key: string; expires: number }
+export interface Shared { id: string; key: string; expires: number; /** the draft (book) the link carries now */ book?: string; version?: number }
 export const sharedOf = (bookId: string) => kv.get<Shared | null>('share.' + bookId, null);
 
 export interface MyShares { name: string; used: number; maxBytes: number; maxBooks: number; books: { id: string; size: number; created: number; expires: number; readers: number; updated: number | null }[] }
@@ -266,8 +266,19 @@ export async function publish(bookId: string, file: { name: string; bytes: Uint8
   const s = await seal(file.bytes, file.name, (await service())?.writer?.name);
   const { hash } = await postToken(s.key);
   const r = await call<{ id: string; expires: number }>('POST', '/api/shares', s.sealed, { 'x-post': hash });
-  kv.set('share.' + bookId, { id: r.id, key: s.key, expires: r.expires } satisfies Shared);
+  kv.set('share.' + bookId, { id: r.id, key: s.key, expires: r.expires, book: bookId, version: 1 } satisfies Shared);
   return serviceLink(r.id, s.key);
+}
+
+/** Sends this draft to the readers of the link it was carried to (D8): sealed with the
+ *  link's own key, in the place of the one before. */
+export async function sendDraft(bookId: string, file: { name: string; bytes: Uint8Array }): Promise<number> {
+  const s = sharedOf(bookId);
+  if (!s) throw new ServiceError(404, 'This book is not shared.');
+  const sealed = await seal(file.bytes, file.name, (await service())?.writer?.name, s.key);
+  const r = await call<{ version: number }>('PUT', `/api/shares/${s.id}/draft`, sealed.sealed);
+  kv.set('share.' + bookId, { ...s, book: bookId, version: r.version } satisfies Shared);
+  return r.version;
 }
 
 export async function renew(bookId: string): Promise<number> {
@@ -323,8 +334,16 @@ export async function collectNotes(): Promise<{ book: string; from: string; note
 /** What a reader keeps about a book they were sent by link (kv `joined.<book>`), to send
  *  their notes back to it: the link's id and key; after a first send, the service's
  *  pass for later ones, what was sent (a digest), and whether to send by themselves. */
-export interface Joined { id: string; key: string; sent?: number; pass?: string; digest?: string; auto?: boolean }
+export interface Joined { id: string; key: string; sent?: number; pass?: string; digest?: string; auto?: boolean; /** the draft's version read */ version?: number }
 export const joinedOf = (bookId: string) => kv.get<Joined | null>('joined.' + bookId, null);
+
+/** A newer draft at the link this book came by, if there is one (its version). */
+export async function newerDraft(bookId: string): Promise<number | null> {
+  const j = joinedOf(bookId);
+  if (!j) return null;
+  const r = await call<{ version: number }>('GET', `/api/books/${j.id}/version`);
+  return r.version > (j.version ?? 1) ? r.version : null;
+}
 
 export async function fetchSealed(id: string): Promise<Uint8Array> {
   return new Uint8Array(await call<ArrayBuffer>('GET', `/api/books/${id}`));

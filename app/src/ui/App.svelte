@@ -56,6 +56,20 @@
   // The phone's back gesture (and the browser's back): closes what is on top, a sheet, a
   // large image, the map, then the book. Each layer that opens adds a history entry; one
   // the app closes itself takes its entry back, so history holds only what is open.
+  // a book that came by link: has the writer sent a newer draft? (asked each time it
+  // opens, one small request; never while it is read)
+  let draftAskedFor = '';
+  $effect(() => {
+    // (the view and title are what change as a book opens; the reader's book is not state)
+    const id = ui.view === 'reader' && ui.title ? reader.book?.id : undefined;
+    if (!id) { draftAskedFor = ''; return; }
+    if (draftAskedFor === id || embedded || !joinedOf(id)) return;
+    draftAskedFor = id;
+    import('../core/service').then(s => s.newerDraft(id)).then(v => {
+      if (v && reader.book?.id === id && !ui.sheet) { ui.newDraft = v; ui.sheet = 'newdraft'; }
+    }).catch(() => {});
+  });
+
   // the colour around the page: at once between views, with the map's fade for the map
   let edgeView = '';
   $effect(() => {

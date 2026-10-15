@@ -99,6 +99,9 @@ export interface LibHit { sec: number; block: number; key: string; s: number; e:
 /** A book's matches: how many, whether the phrase (else paragraphs with every word), the first few. */
 export interface BookHits { id: string; total: number; phrase: boolean; hits: LibHit[] }
 
+/** A note as a Word comment: the words, a little either side, who, what (annotate.rs). */
+export interface WordComment { quote: string; prefix: string; suffix: string; author: string; text: string; date: string }
+
 export interface LibEntry {
   id: string;
   title: string;
@@ -160,6 +163,9 @@ export interface Core {
   reimport(id: string): Promise<LibEntry>;
   /** An image's bytes (a rich block's XHTML). */
   imageBytes(id: string, idx: number): Promise<ArrayBuffer>;
+  /** Readers' notes put into a Word file as Word comments, found there by their words:
+   *  the file again, how many were placed, and which were not. */
+  annotateDocx(docx: Uint8Array, notes: WordComment[]): Promise<{ bytes: Uint8Array; placed: number; unplaced: number[] }>;
   /** Sizes measured for rich blocks, `[index, w, h]`, kept with the book. */
   setImageSizes(id: string, sizes: [number, number, number][]): Promise<void>;
   /** Replaces the cover with a smaller image of it (the library's thumbnail). */

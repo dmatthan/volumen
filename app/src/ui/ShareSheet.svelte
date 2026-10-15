@@ -5,7 +5,7 @@
   import { toast, ui } from '../reader/reader.svelte';
   import { shell } from '../core/shell';
   import { canSeal, seal, linkFor, serviceLink } from '../core/share';
-  import { service, signIn, signOut, publish, renew, withdraw, sharedOf, myShares, collectNotes, canPasskey, personToken, syncShares, hasVault, unlockVault, type ServiceConfig, type Shared } from '../core/service';
+  import { service, signIn, signOut, publish, renew, withdraw, sharedOf, myShares, collectNotes, canPasskey, personToken, syncShares, hasVault, unlockVault, sendDraft, type ServiceConfig, type Shared } from '../core/service';
   import type { Core, LibEntry } from '../core/types';
   import { me } from '../reader/feedback';
 
@@ -70,6 +70,16 @@
     copyBtn?.focus();
   });
   let copyBtn: HTMLButtonElement | undefined = $state();
+  // the link carries an earlier draft of this book (carried here: reader/draft.ts)
+  const behind = $derived(!!shared?.book && shared.book !== book.id);
+  const sendThis = () => act(async () => {
+    const src = await core.source(book.id);
+    if (!src) { why = 'This book’s file was not kept: add it again, then send it.'; return; }
+    const v = await sendDraft(book.id, src);
+    shared = sharedOf(book.id);
+    sync();
+    toast(`Sent: your readers get this draft (draft ${v}) the next time they open the book, their notes carried over.`, 6000);
+  });
   const keep = () => act(async () => { await renew(book.id); shared = sharedOf(book.id); sync(); toast(`The link works until ${day(shared!.expires)}.`, 4000); });
   const doWithdraw = () => act(async () => {
     if (!confirmWithdraw) { confirmWithdraw = true; return; }
@@ -127,6 +137,10 @@
         <input class="link" type="text" readonly value={link} aria-label="The link" onfocus={e => (e.currentTarget as HTMLInputElement).select()} />
         <button class="btn primary" bind:this={copyBtn} onclick={() => copy(link)}>Copy the link</button>
       </div>
+      {#if behind}
+        <p class="where">This link still carries an earlier draft. Send this one, and readers get it the next time they open the book, their notes carried over.</p>
+        <div class="acts"><button class="btn primary" disabled={busy} onclick={sendThis}>Send this draft to your readers</button></div>
+      {/if}
       <p class="where">{readers === null ? '' : readers === 0 ? 'No notes from readers yet. ' : `Notes from ${readers} reader${readers === 1 ? '' : 's'}. `}Works until {day(shared.expires)}.</p>
       <div class="acts wrap">
         <button class="btn" disabled={busy} onclick={check}>Check for notes</button>

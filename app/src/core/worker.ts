@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 // The engine for the web build. Book blobs live in IndexedDB here, so the main thread
 // never holds or parses a whole book.
-import init, { Engine, catchPanics, lastPanic, faultForTest, importerVersion } from './pkg/vol_wasm.js';
+import init, { Engine, catchPanics, lastPanic, faultForTest, importerVersion, annotateDocx } from './pkg/vol_wasm.js';
 import wasmUrl from './pkg/vol_wasm_bg.wasm?url';
 import type { BookData, BookHits, FamilyLoad, LibEntry } from './types';
 import { bundledFiles } from './fonts';
@@ -139,6 +139,12 @@ const ops: Record<string, (...a: any[]) => Promise<unknown>> = {
   async setImageSizes(id: string, flat: number[]) {
     await ensure(id);
     if (eng.setImageSizes(id, new Uint32Array(flat))) await tx('books', 'readwrite', s => s.put(eng.save(id)!, id));
+  },
+  /** Readers' notes as Word comments in a Word file (crates/ingest/src/annotate.rs). */
+  async annotateDocx(docx: Uint8Array, notes: string) {
+    await ready;
+    const a = annotateDocx(docx, notes);
+    return { bytes: a.bytes, report: a.report };
   },
   /** A book removed from the library, or imported again: the engine's copy goes. */
   async forget(id: string) {

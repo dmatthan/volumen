@@ -133,6 +133,7 @@ export class Feedback {
 
   constructor(private book: BookData, private keyIndex: Map<string, [number, number]>) {
     this.readers = kv.get<Record<string, FbReader>>('fb.' + book.id, {});
+    this.status = kv.get<Record<string, 'done' | 'wont'>>('fbst.' + book.id, {});
     // (notes received before chapter lines were removed may hold them)
     for (const rd of Object.values(this.readers)) rd.notes = rd.notes.filter(n => n.kind === 'highlight' || n.kind === 'mark');
     this.index();
@@ -174,9 +175,13 @@ export class Feedback {
   private save() { kv.set('fb.' + this.book.id, this.readers); this.index(); }
 
   /** Adds (or replaces) a reader's notes. */
-  add(f: NotesFile) {
+  /** A reader's notes, replacing their older ones (an older file changes nothing: false). */
+  add(f: NotesFile): boolean {
+    const had = this.readers[f.from.id];
+    if (had && had.sent > f.sent) return false;
     this.readers[f.from.id] = { name: f.from.name || 'A reader', sent: f.sent, notes: f.notes.map(n => ({ ...n })) };
     this.save();
+    return true;
   }
   remove(id: string) { delete this.readers[id]; this.hidden.delete(id); this.save(); }
   toggle(id: string) { if (this.hidden.has(id)) this.hidden.delete(id); else this.hidden.add(id); this.index(); }
@@ -231,17 +236,30 @@ export class Feedback {
 
   /** Everything, gathered by passage in reading order: notes on overlapping words of one
    *  block are one entry with every reader's voice. */
+  /** What the writer decided about a passage (kept per book, `fbst.<id>`): done, or
+   *  won't change; none is open. A passage is known by where it begins. */
+  status: Record<string, 'done' | 'wont'> = {};
+  passageId = (g: { key: string; s: number }) => `${g.key}:${g.s}`;
+  setStatus(g: { key: string; s: number }, st: 'done' | 'wont' | null) {
+    const id = this.passageId(g);
+    if (st) this.status[id] = st; else delete this.status[id];
+    kv.set('fbst.' + this.book.id, this.status);
+  }
+
+  /** Passages as `gathered`, with what the writer decided about each. */
+  passages() { return this.gathered().map(g => ({ ...g, st: this.status[this.passageId(g)] as 'done' | 'wont' | undefined })); }
+
   gathered() {
     const all: { r: string; n: FbNote }[] = [];
     for (const [r, rd] of Object.entries(this.readers)) if (!this.hidden.has(r)) for (const n of rd.notes) if (!n.lost) all.push({ r, n });
     const pos = (x: { n: FbNote }) => { const h = this.keyIndex.get(x.n.key); return !h ? 9e15 : h[0] * 1e9 + h[1] * 1e4; };
     all.sort((a, b) => pos(a) - pos(b) || a.n.s - b.n.s);
-    const groups: { key: string; sec: number; where: string; s: number; e: number; quote: string; voices: { reader: string; colour: number; kind: FbNote['kind']; note?: string; was?: string }[] }[] = [];
+    const groups: { key: string; sec: number; where: string; s: number; e: number; quote: string; voices: { reader: string; colour: number; kind: FbNote['kind']; note?: string; was?: string; rid: string; n: FbNote }[] }[] = [];
     for (const x of all) {
       const h = this.keyIndex.get(x.n.key)!;
       const t = this.book.sections[h[0]].blocks[h[1]].t;
       const last = groups[groups.length - 1];
-      const voice = { reader: this.readers[x.r].name, colour: this.colourOf(x.r), kind: x.n.kind, note: x.n.note, was: x.n.was };
+      const voice = { reader: this.readers[x.r].name, colour: this.colourOf(x.r), kind: x.n.kind, note: x.n.note, was: x.n.was, rid: x.r, n: x.n };
       if (last && last.key === x.n.key && x.n.s < last.e) {
         last.voices.push(voice);
         last.e = Math.max(last.e, x.n.e);
@@ -260,9 +278,13 @@ export function targetOf(f: NotesFile, library: { id: string; title: string }[])
   return library.find(b => b.id === f.book.id) ?? library.find(b => b.title.trim().toLowerCase() === f.book.title.trim().toLowerCase()) ?? null;
 }
 
-/** Stores a notes file against a book without opening it (placed when it opens). */
-export function receive(f: NotesFile, bookId: string) {
+/** Stores a notes file against a book without opening it (placed when it opens). A
+ *  reader's newer file replaces their older; an older one changes nothing (false). */
+export function receive(f: NotesFile, bookId: string): boolean {
   const all = kv.get<Record<string, FbReader>>('fb.' + bookId, {});
+  const had = all[f.from.id];
+  if (had && had.sent > f.sent) return false;
   all[f.from.id] = { name: f.from.name || 'A reader', sent: f.sent, notes: f.notes };
   kv.set('fb.' + bookId, all);
+  return true;
 }

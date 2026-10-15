@@ -183,3 +183,29 @@ impl Engine {
 pub fn fault_for_test() {
     panic!("a fault made on purpose");
 }
+
+/// The writer's Word file with readers' notes as Word comments, and what was placed
+/// (`vol_engine::annotate_docx`).
+#[wasm_bindgen]
+pub struct Annotated {
+    bytes: Vec<u8>,
+    report: String,
+}
+
+#[wasm_bindgen]
+impl Annotated {
+    #[wasm_bindgen(getter)]
+    pub fn bytes(&self) -> Vec<u8> {
+        self.bytes.clone()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn report(&self) -> String {
+        self.report.clone()
+    }
+}
+
+#[wasm_bindgen(js_name = annotateDocx)]
+pub fn annotate_docx(docx: &[u8], comments: &str) -> Result<Annotated, JsError> {
+    let (bytes, report) = vol_engine::annotate_docx(docx, comments).map_err(|e| JsError::new(&e))?;
+    Ok(Annotated { bytes, report })
+}

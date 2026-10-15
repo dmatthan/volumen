@@ -436,3 +436,30 @@ fn beyond_core(b: &Book) -> String {
     }
     out
 }
+
+/// A reader's note to put into a Word file as a comment (`vol_ingest::annotate`).
+#[derive(serde::Deserialize)]
+struct WordComment {
+    quote: String,
+    #[serde(default)]
+    prefix: String,
+    #[serde(default)]
+    suffix: String,
+    author: String,
+    text: String,
+    #[serde(default)]
+    date: String,
+}
+
+/// Readers' notes put into the writer's Word file as Word comments: the file again, and
+/// `{"placed": n, "unplaced": [indices]}`. One function for both shells.
+pub fn annotate_docx(docx: &[u8], comments_json: &str) -> Result<(Vec<u8>, String), String> {
+    let cs: Vec<WordComment> = serde_json::from_str(comments_json).map_err(|e| e.to_string())?;
+    let cs: Vec<vol_ingest::annotate::Comment> = cs
+        .into_iter()
+        .map(|c| vol_ingest::annotate::Comment { quote: c.quote, prefix: c.prefix, suffix: c.suffix, author: c.author, text: c.text, date: c.date })
+        .collect();
+    let a = vol_ingest::annotate::annotate(docx, &cs).map_err(|e| e.to_string())?;
+    let report = format!("{{\"placed\":{},\"unplaced\":{:?}}}", a.placed, a.unplaced);
+    Ok((a.bytes, report))
+}

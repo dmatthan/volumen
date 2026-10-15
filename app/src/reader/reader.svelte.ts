@@ -14,13 +14,13 @@ import { themes, themeById, resolve, loadFamily, fontsReady, type Resolved } fro
 import { Annotations } from './annotations';
 import { Finder } from './find.svelte';
 import { notebookOf, saveDigest } from './notebook';
-import { Feedback, parseNotes, targetOf, notesFile } from './feedback';
+import { Feedback, parseNotes, targetOf, notesFile, type NotesFile } from './feedback';
 import { sendQuietly } from '../core/service';
 import { embedded } from '../core/embed';
 import { isMine, restoreInto, restored } from './restore';
 import { hint } from './hints';
 
-export type Sheet = null | 'settings' | 'theme' | 'help' | 'remove' | 'note' | 'book' | 'shelf' | 'send' | 'share' | 'invite' | 'welcome';
+export type Sheet = null | 'settings' | 'theme' | 'help' | 'remove' | 'note' | 'book' | 'shelf' | 'send' | 'share' | 'invite' | 'welcome' | 'fbexport' | 'draft' | 'newdraft';
 
 /** A text selection in the book: from (sec, block, offset) to (sec, block, offset). */
 export interface Sel { a: [number, number, number]; z: [number, number, number] }
@@ -48,6 +48,8 @@ export const ui = $state({
   invite: '',
   /** A book just arrived by link: who sent it (WelcomeSheet, once per book). */
   welcome: null as null | { by: string },
+  /** A newer draft at the link the open book came by (its version): NewDraftSheet. */
+  newDraft: null as null | number,
   /** Bumps when the whole book's layout arrives (column counts become exact). */
   layoutVersion: 0,
   /** The chip offered after a selection or on a highlight. */
@@ -242,26 +244,36 @@ export class Reader {
 
   /** Takes a notes file for the open book: one's own notes are put back (an export, or a
    *  copy from another device), another reader's are placed beside the text as theirs. */
-  async receiveNotes(text: string): Promise<string> {
-    const files = parseNotes(text, this.book ? { id: this.book.id, title: this.book.title, author: this.book.author } : undefined);
-    if (typeof files === 'string') return files;
+  async receiveNotes(input: string | string[]): Promise<string> {
+    // one file or a dozen: read all, placed once, said once
+    const texts = Array.isArray(input) ? input : [input];
     const book = this.book;
+    const meta = book ? { id: book.id, title: book.title, author: book.author } : undefined;
+    const files: NotesFile[] = [];
+    let bad = 0, why = '';
+    for (const t of texts) { const r = parseNotes(t, meta); if (typeof r === 'string') { bad++; why = r; } else files.push(...r); }
+    if (!files.length) return texts.length === 1 ? why : 'None of these files are notes.';
     if (!book || !this.fb || !this.strip || !this.ann) return 'Open the book the notes are for first.';
-    const f = files.find(x => targetOf(x, [{ id: book.id, title: book.title }]));
-    if (!f) return `These notes are for “${files[0].book.title}”.`;
-    if (isMine(f)) {
-      const r = await restoreInto(f, book, this.core, this.ann, this.marks);
-      for (const [k] of this.surface.rendered()) this.surface.refresh(k);
-      ui.annVersion++;
-      this.digestSoon();
-      return restored(book.title, r);
-    }
-    this.fb.add(f);
-    await this.fb.place(this.core);
+    const here = files.filter(x => targetOf(x, [{ id: book.id, title: book.title }]));
+    if (!here.length) return `These notes are for “${files[0].book.title}”.`;
+    const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+    const said: string[] = [];
+    for (const f of here.filter(isMine)) said.push(restored(book.title, await restoreInto(f, book, this.core, this.ann, this.marks)));
+    const theirs = here.filter(f => !isMine(f) && this.fb!.add(f));
+    if (theirs.length) {
+      await this.fb.place(this.core);
+      const ids = new Set(theirs.map(f => f.from.id));
+      const rs = this.fb.list().filter(x => ids.has(x.id));
+      const placed = rs.reduce((k, x) => k + x.count, 0), lost = rs.reduce((k, x) => k + x.lost, 0);
+      const who = rs.length === 1 ? rs[0].name : n(rs.length, 'reader', 'readers');
+      said.push(`Notes from ${who}: ${placed} placed${lost ? `, ${lost} not found in this version` : ''}.`);
+    } else if (!said.length) said.push('These notes are here already.');
+    if (files.length > here.length) said.push(`${n(files.length - here.length, 'file is', 'files are')} for other books: add ${files.length - here.length === 1 ? 'it' : 'them'} from the library.`);
+    if (bad) said.push(`${n(bad, 'file was', 'files were')} not notes.`);
     for (const [k] of this.surface.rendered()) this.surface.refresh(k);
     ui.annVersion++;
-    const r = this.fb.list().find(x => x.name === (f.from.name || 'A reader'));
-    return `Notes from ${f.from.name || 'a reader'}: ${r?.count ?? 0} placed${r?.lost ? `, ${r.lost} not found in this version` : ''}.`;
+    this.digestSoon();
+    return said.join(' ');
   }
 
   /** This reader's notes on the open book, as a notes file. */

@@ -9,7 +9,7 @@ export const stale = (e: LibEntry) => (e.importer ?? 0) < IMPORTER_VERSION;
 
 /** Where a block's text is, as an anchor that finds it again in another reading of the
  *  book: its words from `off`, and the words around them. */
-function anchorAt(book: BookData, key: string, off: number): NoteAnchor | null {
+export function anchorAt(book: BookData, key: string, off: number): NoteAnchor | null {
   for (const s of book.sections) for (const b of s.blocks) {
     if (b.key !== key) continue;
     const t = b.t;

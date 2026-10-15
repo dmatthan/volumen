@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { droppedFiles } from './files';
   import { embedded } from '../core/embed';
   import { isNotesMarkdown } from '../reader/notesmd';
   import { isWebAnno } from '../reader/webanno';
@@ -19,6 +20,8 @@
   import NoteSheet from './NoteSheet.svelte';
   import SendSheet from './SendSheet.svelte';
   import WelcomeSheet from './WelcomeSheet.svelte';
+  import FeedbackExportSheet from './FeedbackExportSheet.svelte';
+  import NewDraftSheet from './NewDraftSheet.svelte';
 
   let { reader, map, hidden, chip = $bindable(), findBar = $bindable() }: { reader: Reader; map: MapCtl; hidden: boolean; chip?: Chip; findBar?: FindBar } = $props();
   let stage: HTMLElement, track: HTMLElement, bar: HTMLElement;
@@ -52,12 +55,17 @@
 <section class="reader" class:clear-veil={!settings.veil} class:view-minimal={settings.view === 'minimal' || ui.phone} {hidden} aria-label="Reader"
   ondragover={e => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); }}
   ondrop={async e => {
-    // notes on this book dropped onto it: a notes file, or a notebook exported as Markdown
-    const f = [...(e.dataTransfer?.files ?? [])].find(f => /\.(vnotes|md|markdown|json|jsonld)$/i.test(f.name));
-    if (!f) return;
+    // notes on this book dropped onto it (files, or a folder of them): notes files,
+    // notebooks exported as Markdown, Web Annotations
+    if (!e.dataTransfer?.items.length) return;
     e.preventDefault();
-    const text = await f.text();
-    if (/\.vnotes$/i.test(f.name) || isNotesMarkdown(text) || isWebAnno(text)) toast(await reader.receiveNotes(text).catch(e => `These notes could not be taken: ${(e as Error).message}`), 5200);
+    const texts: string[] = [];
+    for (const f of await droppedFiles(e.dataTransfer)) {
+      if (!/\.(vnotes|md|markdown|json|jsonld)$/i.test(f.name) || f.size > 8e6) continue;
+      const text = await f.text();
+      if (/\.vnotes$/i.test(f.name) || isNotesMarkdown(text) || isWebAnno(text)) texts.push(text);
+    }
+    if (texts.length) { const m = await reader.receiveNotes(texts).catch(e => `These notes could not be taken: ${(e as Error).message}`); toast(m, Math.max(5200, m.length * 60)); }
   }}>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- a tap in the bar’s band while it is away brings it back (a phone has no pointer to
@@ -102,6 +110,8 @@
 {#if !hidden && ui.sheet === 'note'}<NoteSheet {reader} />{/if}
 {#if !hidden && ui.sheet === 'send' && reader.book}<SendSheet {reader} />{/if}
 {#if !hidden && ui.sheet === 'welcome' && reader.book}<WelcomeSheet {reader} />{/if}
+{#if !hidden && ui.sheet === 'fbexport' && reader.fb}<FeedbackExportSheet {reader} />{/if}
+{#if !hidden && ui.sheet === 'newdraft' && ui.newDraft && reader.book}<NewDraftSheet {reader} />{/if}
 
 <style>
   .bar { position: absolute; top: env(safe-area-inset-top); left: env(safe-area-inset-left); right: env(safe-area-inset-right); z-index: 5; height: 52px; will-change: transform; transform: translateZ(0); display: grid; grid-template-columns: 1fr minmax(0, auto) 1fr; align-items: center; padding-inline: 10px; gap: 8px; color: var(--ink-3); }

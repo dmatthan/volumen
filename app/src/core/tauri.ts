@@ -30,6 +30,16 @@ export function tauriCore(): Core {
       return name ? { name, bytes: new Uint8Array(await invoke<ArrayBuffer>('source_bytes', { id })) } : null;
     },
     imageBytes: (id, idx) => invoke<ArrayBuffer>('image_bytes', { id, idx }),
+    // (one body each way: a u32 length, that much JSON, then the Word file)
+    annotateDocx: async (docx, notes) => {
+      const json = new TextEncoder().encode(JSON.stringify(notes));
+      const body = new Uint8Array(4 + json.length + docx.length);
+      new DataView(body.buffer).setUint32(0, json.length);
+      body.set(json, 4); body.set(docx, 4 + json.length);
+      const out = new Uint8Array(await invoke<ArrayBuffer>('annotate_docx', body));
+      const n = new DataView(out.buffer, out.byteOffset).getUint32(0);
+      return { bytes: out.slice(4 + n), ...JSON.parse(new TextDecoder().decode(out.slice(4, 4 + n))) };
+    },
     setCover: (id, bytes) => invoke<void>('set_cover', new Uint8Array(bytes), { headers: { 'x-id': id } }),
     // served by the shell's volimg: scheme (Windows' webview reaches custom schemes as http://<scheme>.localhost)
     imageURL: (id, idx) => (navigator.userAgent.includes('Windows') ? `http://volimg.localhost/${id}/${idx}` : `volimg://localhost/${id}/${idx}`),

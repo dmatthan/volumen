@@ -40,8 +40,9 @@ const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map(x => x.toString(16).p
  *  desktop app, localhost). */
 export const canSeal = () => typeof crypto !== 'undefined' && !!crypto.subtle && window.isSecureContext;
 
-export async function seal(file: Uint8Array, name: string, by?: string): Promise<{ sealed: Uint8Array; key: string }> {
-  const raw = crypto.getRandomValues(new Uint8Array(32));
+/** Seals a file with a new key, or with a link's own (`key`: a new draft to the same link). */
+export async function seal(file: Uint8Array, name: string, by?: string, linkKey?: string): Promise<{ sealed: Uint8Array; key: string }> {
+  const raw = linkKey ? unb64url(linkKey) : crypto.getRandomValues(new Uint8Array(32));
   const key = (await derive(raw)).book;
   const head = new TextEncoder().encode(JSON.stringify({ v: 1, name, size: file.length, sha256: hex(await crypto.subtle.digest('SHA-256', file as BufferSource)), ...(by ? { by: by.slice(0, 60) } : {}) }));
   const plain = new Uint8Array(4 + head.length + file.length);

@@ -122,6 +122,10 @@ export function webCore(): Core & { importSample(bytes: Uint8Array): Promise<Lib
     },
     probe: (p, texts) => call<number[]>('probe', [p, texts]),
     setImageSizes: (id, sizes) => call<void>('setImageSizes', [id, sizes.flat()]),
+    annotateDocx: async (docx, notes) => {
+      const r = await call<{ bytes: Uint8Array; report: string }>('annotateDocx', [docx, JSON.stringify(notes)]);
+      return { bytes: r.bytes, ...JSON.parse(r.report) };
+    },
     imageBytes: async (id, idx) => (await db.image(id, idx))?.bytes ?? new ArrayBuffer(0),
     loadFamily: name => call<FamilyLoad>('loadFamily', [name]),
     faultForTest: () => call<void>('faultForTest', []),

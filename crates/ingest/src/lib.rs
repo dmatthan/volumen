@@ -1,5 +1,6 @@
 //! Turns EPUB, Word (DOCX), Markdown and plain-text files into the book model.
 
+pub mod annotate;
 mod css;
 mod doc;
 mod docx;
