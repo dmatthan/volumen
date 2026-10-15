@@ -30,6 +30,7 @@ export function tauriCore(): Core {
       return name ? { name, bytes: new Uint8Array(await invoke<ArrayBuffer>('source_bytes', { id })) } : null;
     },
     imageBytes: (id, idx) => invoke<ArrayBuffer>('image_bytes', { id, idx }),
+    epubOf: async (bytes, name, from, to) => new Uint8Array(await invoke<ArrayBuffer>('epub_of', bytes, { headers: { 'x-name': encodeURIComponent(name), 'x-from': String(from), 'x-to': String(to) } })),
     // (one body each way: a u32 length, that much JSON, then the Word file)
     annotateDocx: async (docx, notes) => {
       const json = new TextEncoder().encode(JSON.stringify(notes));

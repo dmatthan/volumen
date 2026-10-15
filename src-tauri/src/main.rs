@@ -505,6 +505,17 @@ async fn image_bytes(id: String, idx: u32, app: State<'_, App>) -> Res<Response>
     Ok(Response::new(found.map(|(_, b)| b).unwrap_or_default()))
 }
 
+/// Chapters of a file as an EPUB of their own (`vol_engine::epub_of`): the file in the
+/// body, its name and the chapters in headers.
+#[tauri::command]
+async fn epub_of(request: Request<'_>) -> Res<Response> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected a file".into()) };
+    let h = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).map(percent_decode).unwrap_or_default();
+    let (from, to) = (h("x-from").parse().unwrap_or(1), h("x-to").parse().unwrap_or(usize::MAX));
+    let name = h("x-name");
+    Ok(Response::new(guarded(|| vol_engine::epub_of(bytes, &name, from, to))?))
+}
+
 /// Readers' notes put into a Word file as Word comments (`vol_engine::annotate_docx`).
 /// Both ways one body: a u32 length (big-endian), that much JSON (the notes; the
 /// report), then the Word file.
@@ -741,7 +752,7 @@ fn main() {
                 responder.respond(res.unwrap());
             });
         })
-        .invoke_handler(tauri::generate_handler![import_bytes, pick_book, open_book, layout, find, search_library, place_notes, font_needs, probe, library, remove_book, state_load, state_put, cover, set_cover, set_image_sizes, image_bytes, annotate_docx, reimport, source_name, source_bytes, picked_bytes, save_text, save_bytes, system_families, load_family, font_file, desktop_palette, selftest_mode, selftest_arg, dev_corpus, dev_zoom, dev_log, dev_quit, quit_now])
+        .invoke_handler(tauri::generate_handler![import_bytes, pick_book, open_book, layout, find, search_library, place_notes, font_needs, probe, library, remove_book, state_load, state_put, cover, set_cover, set_image_sizes, image_bytes, annotate_docx, epub_of, reimport, source_name, source_bytes, picked_bytes, save_text, save_bytes, system_families, load_family, font_file, desktop_palette, selftest_mode, selftest_arg, dev_corpus, dev_zoom, dev_log, dev_quit, quit_now])
         .on_window_event(|window, event| {
             // closing goes through the frontend, which saves and releases its GL context
             // first; if it does not answer within two seconds the app exits anyway

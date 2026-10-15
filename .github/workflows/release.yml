@@ -57,7 +57,11 @@ jobs:
           mkdir -p dist
           case "$RUNNER_OS" in
             Linux)   cp "$out"/appimage/*.AppImage dist/Volumen-linux-x86_64.AppImage
-                     cp "$out"/deb/*.deb dist/Volumen-linux-amd64.deb ;;
+                     cp "$out"/deb/*.deb dist/Volumen-linux-amd64.deb
+                     # the kit: the reader alone, to unpack into a folder of any site
+                     (cd app && VOLUMEN_KIT=1 npx vite build --logLevel warn)
+                     mkdir -p kit/volumen && cp -r app/dist-kit/* kit/volumen/
+                     (cd kit && zip -qr ../dist/Volumen-kit.zip volumen) ;;
             macOS)   cp "$out"/dmg/*.dmg dist/Volumen-macos.dmg ;;
             Windows) cp "$out"/nsis/*-setup.exe dist/Volumen-windows-x64-setup.exe ;;
           esac

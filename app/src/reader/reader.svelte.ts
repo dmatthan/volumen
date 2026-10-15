@@ -16,11 +16,11 @@ import { Finder } from './find.svelte';
 import { notebookOf, saveDigest } from './notebook';
 import { Feedback, parseNotes, targetOf, notesFile, type NotesFile } from './feedback';
 import { sendQuietly } from '../core/service';
-import { embedded } from '../core/embed';
+import { embedded, embedMoved, embedOpts } from '../core/embed';
 import { isMine, restoreInto, restored } from './restore';
 import { hint } from './hints';
 
-export type Sheet = null | 'settings' | 'theme' | 'help' | 'remove' | 'note' | 'book' | 'shelf' | 'send' | 'share' | 'invite' | 'welcome' | 'fbexport' | 'draft' | 'newdraft';
+export type Sheet = null | 'settings' | 'theme' | 'help' | 'remove' | 'note' | 'book' | 'shelf' | 'send' | 'share' | 'invite' | 'welcome' | 'fbexport' | 'draft' | 'newdraft' | 'epub';
 
 /** A text selection in the book: from (sec, block, offset) to (sec, block, offset). */
 export interface Sel { a: [number, number, number]; z: [number, number, number] }
@@ -607,7 +607,7 @@ export class Reader {
     const strip = this.strip!, it = strip.itemAt(k), b = strip.book;
     if (!it) return '';
     if (it.type === 'title') return b.title;
-    if (it.type === 'colophon') return 'Colophon';
+    if (it.type === 'colophon') return embedOpts.endHref ? 'The end' : 'Colophon';
     const s = b.sections[it.sec];
     if (s.k === 0) return s.title || 'Front matter';
     return s.label && s.title ? `${s.num} · ${s.title}` : chapName(b, it.sec);
@@ -653,8 +653,9 @@ export class Reader {
     this.teach(k);
     clearTimeout(this.dwellT); this.dwellT = window.setTimeout(() => focus.forEach(c => this.markSeen(c)), 1600);
     clearTimeout(this.saveT); this.saveT = window.setTimeout(() => this.book && kv.set('pos.' + this.book.id, strip.anchorAt(this.cur)), 400);
+    if (embedded) embedMoved(strip.frac(k), k >= strip.N - 1);
     // controls in leaves are reachable only while their leaf is in focus
-    for (const [c, el] of this.surface.rendered()) for (const x of el.querySelectorAll<HTMLElement>('textarea, button')) x.tabIndex = focus.includes(c) ? 0 : -1;
+    for (const [c, el] of this.surface.rendered()) for (const x of el.querySelectorAll<HTMLElement>('textarea, button, a[href]')) x.tabIndex = focus.includes(c) ? 0 : -1;
     if (!quiet && document.activeElement?.closest?.('.leaf') && !focus.some(c => this.surface.columnEl(c)?.contains(document.activeElement))) this.stage.focus({ preventScroll: true });
     if (this.pick) this.pickSet(0);
   }

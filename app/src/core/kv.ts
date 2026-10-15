@@ -33,10 +33,13 @@ const sqlite: Backend = {
   },
 };
 
+/** Nothing kept: a book on someone else's page that was not asked to remember. */
+const memory: Backend = { async load() { return []; }, async put() {} };
+
 let backend: Backend = local;
 
-export async function initKV() {
-  backend = isTauri ? sqlite : local;
+export async function initKV(opts: { memory?: boolean } = {}) {
+  backend = opts.memory ? memory : isTauri ? sqlite : local;
   let rows = await backend.load().catch(() => [] as [string, string][]);
   // first run of the desktop app after state lived in WebKit's localStorage: bring it over
   if (isTauri && !rows.length) {

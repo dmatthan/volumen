@@ -95,6 +95,10 @@ impl Engine {
         self.0.import(bytes, name).map_err(|e| JsError::new(&e))
     }
 
+    pub fn import_chapters(&mut self, bytes: &[u8], name: &str, from: u32, to: u32) -> Result<String, JsError> {
+        self.0.import_chapters(bytes, name, from as usize, to as usize).map_err(|e| JsError::new(&e))
+    }
+
     pub fn restore(&mut self, bytes: &[u8]) -> Result<String, JsError> {
         self.0.restore(bytes).map_err(|e| JsError::new(&e))
     }
@@ -208,4 +212,10 @@ impl Annotated {
 pub fn annotate_docx(docx: &[u8], comments: &str) -> Result<Annotated, JsError> {
     let (bytes, report) = vol_engine::annotate_docx(docx, comments).map_err(|e| JsError::new(&e))?;
     Ok(Annotated { bytes, report })
+}
+
+/// Chapters of a file as an EPUB of their own (`vol_engine::epub_of`).
+#[wasm_bindgen(js_name = epubOf)]
+pub fn epub_of(bytes: &[u8], name: &str, from: u32, to: u32) -> Result<Vec<u8>, JsError> {
+    vol_engine::epub_of(bytes, name, from as usize, to as usize).map_err(|e| JsError::new(&e))
 }

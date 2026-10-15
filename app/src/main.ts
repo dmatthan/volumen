@@ -4,6 +4,8 @@ import './styles/reader.css';
 import { makeCore } from './core';
 import type { Core } from './core/types';
 import { initKV } from './core/kv';
+import { at, KIT } from './core/root';
+import { embedded, embedOpts } from './core/embed';
 import { watchTouch, noPageZoom, followKeyboard } from './ui/touch';
 
 watchTouch();
@@ -13,7 +15,8 @@ followKeyboard();
 // state first: modules below read their stored settings as they load
 let core: Core | undefined;
 try {
-  await initKV();
+  // (a book on someone else's page keeps nothing, unless it was asked to: core/embed.ts)
+  await initKV({ memory: embedded && !embedOpts.remember });
   core = await makeCore();
   const { default: App } = await import('./ui/App.svelte');
   mount(App, { target: document.getElementById('app')!, props: { core } });
@@ -27,8 +30,9 @@ try {
 }
 
 // the web build works offline once visited (sw.js); never in development or the desktop app
-if (import.meta.env.PROD && 'serviceWorker' in navigator && !('__TAURI_INTERNALS__' in window)) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
+// (not the kit: a service worker would take a part of someone else's site)
+if (import.meta.env.PROD && !KIT && 'serviceWorker' in navigator && !('__TAURI_INTERNALS__' in window)) {
+  navigator.serviceWorker.register(at('sw.js')).catch(() => {});
   // tell it what was fetched before it was in charge; and again now and then, as books
   // open (it keeps only what it lacks)
   const keep = async () => {

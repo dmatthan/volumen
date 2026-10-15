@@ -6,6 +6,7 @@
   import ShareSheet from './ShareSheet.svelte';
   import InviteSheet from './InviteSheet.svelte';
   import DraftSheet from './DraftSheet.svelte';
+  import EpubSheet from './EpubSheet.svelte';
   import { earlierDraft } from '../reader/draft';
   import { droppedFiles } from './files';
   import { collectNotes, syncShares, hasVault } from '../core/service';
@@ -90,6 +91,7 @@
   let removing: LibEntry | null = $state(null);
   let sharing: LibEntry | null = $state(null);
   let draftOf: { from: LibEntry; to: LibEntry } | null = $state(null);
+  let epubOf: LibEntry | null = $state(null);
   /** The shelf shown: one that fills itself, or a collection. */
   loadShelves();
   let shelf = $state(kv.get<string>('shelf', 'all'));
@@ -489,6 +491,7 @@
       </form>
     </div>
     <button class="btn quiet share" onclick={() => { sharing = b; sheetBook = null; ui.sheet = 'share'; }}>Share as a link…</button>
+    {#if b.source}<button class="btn quiet share" onclick={() => { epubOf = b; sheetBook = null; ui.sheet = 'epub'; }}>Save as EPUB…</button>{/if}
     <div class="acts two">
       <button class="btn quiet" onclick={() => { removing = b; sheetBook = null; ui.sheet = 'remove'; }}>Remove book <kbd>X</kbd></button>
       <button class="btn primary" data-autofocus onclick={() => { ui.sheet = null; sheetBook = null; }}>Done <kbd>Esc</kbd></button>
@@ -497,6 +500,9 @@
 {/if}
 {#if !hidden && ui.sheet === 'share' && sharing}
   <ShareSheet {core} book={sharing} onclose={() => { ui.sheet = null; sharing = null; }} />
+{/if}
+{#if !hidden && ui.sheet === 'epub' && epubOf}
+  <EpubSheet {core} book={epubOf} onclose={() => { ui.sheet = null; epubOf = null; }} />
 {/if}
 {#if !hidden && ui.sheet === 'draft' && draftOf}
   <DraftSheet {core} from={draftOf.from} to={draftOf.to} remove={remove} onclose={() => { ui.sheet = null; draftOf = null; }} />

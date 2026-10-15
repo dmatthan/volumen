@@ -216,6 +216,25 @@ impl Engine {
         Ok(self.insert(book))
     }
 
+    /// Reads a file and keeps only chapters `from` to `to` (counted from 1): an extract for
+    /// a page, a sample (the kit). Its own id, so it never stands in for the whole book.
+    pub fn import_chapters(&mut self, bytes: &[u8], name: &str, from: usize, to: usize) -> Result<String, String> {
+        let mut book = vol_ingest::any(bytes, name).map_err(|e| e.to_string())?;
+        let mut n = 0;
+        book.sections.retain(|s| {
+            if s.kind != SectionKind::Chapter {
+                return false;
+            }
+            n += 1;
+            n >= from && n <= to
+        });
+        if book.sections.is_empty() {
+            return Err(format!("the book has no chapter {from}"));
+        }
+        book.id = format!("{}-{from}-{to}", book.id);
+        Ok(self.insert(book))
+    }
+
     pub fn insert(&mut self, mut book: Book) -> String {
         book.repair();
         let id = book.id.clone();
@@ -462,4 +481,10 @@ pub fn annotate_docx(docx: &[u8], comments_json: &str) -> Result<(Vec<u8>, Strin
     let a = vol_ingest::annotate::annotate(docx, &cs).map_err(|e| e.to_string())?;
     let report = format!("{{\"placed\":{},\"unplaced\":{:?}}}", a.placed, a.unplaced);
     Ok((a.bytes, report))
+}
+
+/// Chapters `from` to `to` of a file as an EPUB of their own (`vol_ingest::write`): a
+/// sample to put online, or a Word or Markdown manuscript as an EPUB (all its chapters).
+pub fn epub_of(bytes: &[u8], name: &str, from: usize, to: usize) -> Result<Vec<u8>, String> {
+    vol_ingest::write::sample(bytes, name, from, to)
 }

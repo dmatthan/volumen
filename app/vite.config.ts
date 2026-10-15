@@ -1,12 +1,15 @@
 import { defineConfig, type Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 /** The web build for volumen.page (`VOLUMEN_WEB=1`): the app at /read, and the site's own
  *  page, privacy page, stylesheet and script (app/site/) at the root. Other builds (the
  *  desktop app's, the local preview) keep the app at /. */
 const WEB = !!process.env.VOLUMEN_WEB;
+/** The kit (`VOLUMEN_KIT=1`): the reader alone, to put in a folder of any site, with
+ *  volumen.js, the elements that place it on a page (app/kit/, docs/PLAN.md N13). */
+const KIT = !!process.env.VOLUMEN_KIT;
 const START = WEB ? '/read' : '/';
 
 /** Writes the service worker (sw.js) into the web build: the build's own files are its
@@ -14,7 +17,7 @@ const START = WEB ? '/read' : '/';
 function serviceWorker(): Plugin {
   return {
     name: 'volumen-sw',
-    apply: 'build',
+    apply: () => !KIT,
     enforce: 'post',
     generateBundle(_, bundle) {
       const files = Object.keys(bundle).filter(f => !f.endsWith('.map'));
@@ -43,16 +46,39 @@ function website(): Plugin {
       }
       const dir = new URL('./site/', import.meta.url);
       for (const f of readdirSync(dir)) this.emitFile({ type: 'asset', fileName: f, source: readFileSync(new URL(f, dir)) });
+      // the elements, for pages that use the reader from here (https://volumen.page/volumen.js)
+      this.emitFile({ type: 'asset', fileName: 'volumen.js', source: readFileSync(new URL('./kit/volumen.js', import.meta.url)) });
+    },
+  };
+}
+
+/** The kit's layout: the reader's page as embed.html, volumen.js beside it, and none of
+ *  the app's own extras (the sample, the site's headers, the install manifest). */
+function kit(): Plugin {
+  return {
+    name: 'volumen-kit',
+    apply: () => KIT,
+    enforce: 'post',
+    generateBundle(_, bundle) {
+      const app = bundle['index.html'];
+      if (app) { delete bundle['index.html']; app.fileName = 'embed.html'; bundle['embed.html'] = app; }
+      for (const f of readdirSync(new URL('./kit/', import.meta.url))) this.emitFile({ type: 'asset', fileName: f, source: readFileSync(new URL('./kit/' + f, import.meta.url)) });
+    },
+    closeBundle() {
+      const out = new URL('./dist-kit/', import.meta.url).pathname;
+      for (const f of ['sample.epub', '_headers', 'app']) rmSync(out + f, { recursive: true, force: true });
     },
   };
 }
 
 // Tauri expects a fixed port and no clearing of its output.
 export default defineConfig({
-  plugins: [svelte(), website(), serviceWorker()],
+  plugins: [svelte(), website(), kit(), serviceWorker()],
+  base: KIT ? './' : '/',
+  define: { 'import.meta.env.VOLUMEN_KIT': JSON.stringify(KIT) },
   publicDir: '../assets',
   clearScreen: false,
   server: { port: 5193, strictPort: true, fs: { allow: ['..'] } },
-  build: { target: 'es2022', outDir: 'dist', assetsInlineLimit: 0, sourcemap: false },
+  build: { target: 'es2022', outDir: KIT ? 'dist-kit' : 'dist', assetsInlineLimit: 0, sourcemap: false },
   worker: { format: 'es' },
 });

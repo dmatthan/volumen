@@ -10,6 +10,8 @@ import { Annotations, type Annotation } from './annotations';
 import { Feedback } from './feedback';
 import { notebookOf, saveDigest } from './notebook';
 import { anchorAt } from './reread';
+import { joinedOf, fetchSealed } from '../core/service';
+import { unseal } from '../core/share';
 
 const norm = (s: string) => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const worth = (id: string) =>
@@ -92,8 +94,6 @@ export async function carryOver(core: Core, from: LibEntry, to: LibEntry): Promi
 /** A reader's book from a link, whose writer has sent a newer draft (D8): fetched, its
  *  reader's notes carried over, the earlier one removed. The new draft's entry. */
 export async function takeNewDraft(core: Core, old: LibEntry, version: number): Promise<{ entry: LibEntry; carried: Carried }> {
-  const { joinedOf, fetchSealed } = await import('../core/service');
-  const { unseal } = await import('../core/share');
   const j = joinedOf(old.id);
   if (!j) throw new Error('this book did not come by link');
   const f = await unseal(await fetchSealed(j.id), j.key);

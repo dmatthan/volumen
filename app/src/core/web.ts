@@ -1,3 +1,4 @@
+import { at } from './root';
 import type { BookData, BookHits, Core, FamilyLoad, LayoutParams, LibEntry, Placed } from './types';
 import * as db from './db';
 
@@ -65,13 +66,13 @@ export function webCore(): Core & { importSample(bytes: Uint8Array): Promise<Lib
    *  stored: reading a large file grows a WebAssembly memory, which never shrinks, and
    *  the reading engine's stays small; a fault while importing ends only that worker. */
   let importing: Promise<unknown> = Promise.resolve();
-  const importIn = (bytes: Uint8Array, name: string, sample: boolean, again?: LibEntry) => {
+  const importIn = (bytes: Uint8Array, name: string, sample: boolean, again?: LibEntry, chapters?: [number, number]) => {
     const run = importing.then(() => new Promise<LibEntry>((res, rej) => {
       const iw = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
       const end = () => iw.terminate();
       iw.onmessage = e => { end(); e.data.ok ? res(e.data.value) : rej(new Error(e.data.error)); };
       iw.onerror = ev => { ev.preventDefault(); end(); rej(new Error(`Volumen’s engine stopped (${ev.message || 'it could not start'}).`)); };
-      iw.postMessage({ n: 0, op: 'importFile', args: [bytes, name, sample] }, [bytes.buffer]);
+      iw.postMessage({ n: 0, op: 'importFile', args: [bytes, name, sample, chapters] }, [bytes.buffer]);
     })).then(async read => {
       // (a book read again keeps its date and its place among the samples)
       const entry = again ? { ...read, added: again.added, sample: again.sample } : read;
@@ -85,7 +86,7 @@ export function webCore(): Core & { importSample(bytes: Uint8Array): Promise<Lib
   };
 
   return {
-    importFile: (bytes, name) => importIn(bytes, name, false),
+    importFile: (bytes, name, chapters) => importIn(bytes, name, false, undefined, chapters),
     source: id => db.source(id),
     reimport: async id => {
       const src = await db.source(id);
@@ -122,6 +123,7 @@ export function webCore(): Core & { importSample(bytes: Uint8Array): Promise<Lib
     },
     probe: (p, texts) => call<number[]>('probe', [p, texts]),
     setImageSizes: (id, sizes) => call<void>('setImageSizes', [id, sizes.flat()]),
+    epubOf: (bytes, name, from, to) => call<Uint8Array>('epubOf', [bytes, name, from, to]),
     annotateDocx: async (docx, notes) => {
       const r = await call<{ bytes: Uint8Array; report: string }>('annotateDocx', [docx, JSON.stringify(notes)]);
       return { bytes: r.bytes, ...JSON.parse(r.report) };
@@ -144,6 +146,6 @@ export function webCore(): Core & { importSample(bytes: Uint8Array): Promise<Lib
 export async function seedSample(core: ReturnType<typeof webCore>) {
   const lib = await core.library();
   if (lib.length && !lib.some(e => e.sample && !e.cover)) return;
-  const bytes = new Uint8Array(await (await fetch('/sample.epub')).arrayBuffer());
+  const bytes = new Uint8Array(await (await fetch(at('sample.epub'))).arrayBuffer());
   await core.importSample(bytes);
 }

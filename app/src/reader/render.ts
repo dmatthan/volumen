@@ -1,3 +1,4 @@
+import { embedOpts } from '../core/embed';
 import { BlockKind, Style, type BlockData, type BookData } from '../core/types';
 import type { Metrics } from './geometry';
 import type { Annotation } from './annotations';
@@ -231,6 +232,12 @@ export function leafHTML(strip: Strip, it: Item, ctx: LeafCtx): string {
         <p class="tl-hint touch-only">Tap near the edges to turn the page, the middle for the menu. Pinch in for the map.</p>
       </section>`;
     case 'colophon':
+      // an extract on someone else's page, with a way on (kit/volumen.js: end-href)
+      if (embedOpts.endHref) return `<section class="leaf colophon">
+        <p class="eyebrow">The end of this extract</p>
+        <p class="co-title">${esc(b.title)}</p>
+        <p class="co-way"><a class="btn primary" href="${esc(embedOpts.endHref)}" target="_top" rel="noopener">${esc(embedOpts.endLabel ?? 'Continue reading')}</a></p>
+      </section>`;
       return `<section class="leaf colophon">
         <p class="eyebrow">Colophon</p>
         <p class="co-finis">Finis</p>

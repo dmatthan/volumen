@@ -17,6 +17,8 @@ browser ([volumen.page](https://volumen.page)) and as a desktop app.
 | `src-tauri` | The desktop app (Tauri): SQLite storage and full-text search, system fonts |
 | `service` | Sharing: a Cloudflare Worker with D1, holding ciphertext only |
 | `assets` | Fonts, hyphenation patterns, the sample book, icons |
+| `app/kit` | `volumen.js`: the elements that put the reader on other sites' pages |
+| `examples` | A chapter on a blog, a library from a list |
 | `scripts` | Build and deploy |
 
 ## Build
@@ -34,8 +36,9 @@ scripts/run.sh                        # desktop app
 npx --prefix app tauri build          # desktop installers (target/release/bundle)
 ```
 
-Releases are built for Linux, macOS and Windows by `.github/workflows/release.yml` when a
-`v*` tag is pushed.
+`VOLUMEN_KIT=1` builds the kit (`app/dist-kit`). Releases (the desktop app for Linux, macOS
+and Windows, and the kit) are built by `.github/workflows/release.yml` when a `v*` tag is
+pushed.
 
 `VOLUMEN_WEB=1 npm --prefix app run build` builds the site as deployed: the reader at
 `/read`, the page at `/`. Without it the reader is at `/`, as the desktop app loads it.
@@ -53,18 +56,32 @@ scripts/deploy.sh                     # to your own Cloudflare account, after `n
 scripts/service.sh invite "Name"      # an invitation link for a writer
 ```
 
-## Embedding
+## On other sites
 
-One book, read in place on another site:
+The kit is the reader alone, for any site: `Volumen-kit.zip` from a release, unpacked into
+a folder (here `/volumen/`). Two elements place it on a page:
 
 ```html
-<iframe title="A sample chapter" style="width: 100%; height: 640px; border: 0"
-  src="https://volumen.page/embed#src=https://example.org/sample.epub"></iframe>
+<script type="module" src="/volumen/volumen.js"></script>
+
+<volumen-book src="/books/book.epub" chapters="3" theme="paper"
+  end-href="/shop" end-label="Buy the book"></volumen-book>
+
+<volumen-library src="/books.json"></volumen-library>
 ```
 
-The file is fetched by the browser from its own site, which must send
-`Access-Control-Allow-Origin` (GitHub Pages does). `/embed` is the only page that may be
-framed. A self-hosted copy of the web build serves `/embed` the same way.
+`<volumen-book>` fills the box the page gives it. `src` is an EPUB, Word or Markdown file;
+`chapters` (`3`, `1-3`), `theme`, `end-href`/`end-label` (a card at the end) and
+`remember` (keep the reader's place in the browser) are optional. It sends
+`volumen-progress` (`detail.at`, 0 to 1) and `volumen-end`. `<volumen-library>` makes a
+shelf from `[{ "title", "author", "src", "cover" }]`. See `examples/`.
+
+To put a sample online without the rest of the book, write one with only those chapters
+(the app's Save as EPUB, or
+`cargo run -p vol-ingest --example sample -- book.epub 1-3 sample.epub`).
+
+The same elements work from `https://volumen.page/volumen.js`, with no kit; the book's
+server must then send `Access-Control-Allow-Origin`.
 
 ## License
 

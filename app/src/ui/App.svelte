@@ -1,8 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { linkOf, canSeal, unseal } from '../core/share';
-  import { fetchSealed, joinedOf } from '../core/service';
-  import { embedded, embeddedBook } from '../core/embed';
+  import { fetchSealed, joinedOf, newerDraft } from '../core/service';
+  import { embedded, embeddedBook, embedOpts } from '../core/embed';
   import type { Core } from '../core/types';
   import { ui, Reader, toast } from '../reader/reader.svelte';
   import { MapCtl } from '../reader/map.svelte';
@@ -65,7 +65,7 @@
     if (!id) { draftAskedFor = ''; return; }
     if (draftAskedFor === id || embedded || !joinedOf(id)) return;
     draftAskedFor = id;
-    import('../core/service').then(s => s.newerDraft(id)).then(v => {
+    newerDraft(id).then(v => {
       if (v && reader.book?.id === id && !ui.sheet) { ui.newDraft = v; ui.sheet = 'newdraft'; }
     }).catch(() => {});
   });
@@ -156,6 +156,8 @@
   // one book in another site's page (core/embed.ts), or the app
   let embedError = $state('');
   if (embedded) {
+    // the theme the page asked for, if there is one by that name (kept for this visit)
+    if (embedOpts.theme && themeById(embedOpts.theme)) settings.theme = embedOpts.theme;
     // svelte-ignore state_referenced_locally
     embeddedBook(core).then(async r => { if ('error' in r) embedError = r.error; else await reader.open(r.id); })
       .catch(e => { embedError = `The book could not be opened (${(e as Error).message}).`; });

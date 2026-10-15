@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A chapter from a book</title>
+<!-- the kit (a release's Volumen-kit.zip) unpacked into /volumen/ on this site -->
+<script type="module" src="/volumen/volumen.js"></script>
+
+<h1>A chapter from a book</h1>
+
+<!-- one chapter of the book, in the site's own box; at its end, a way on -->
+<volumen-book id="book" src="/books/meditations.epub" chapters="3" theme="paper"
+  end-href="/shop" end-label="Buy the book" style="height: 600px"></volumen-book>
+
+<script>
+  // where the reader is, and the end (for a page that wants to know)
+  window.heard = [];
+  const book = document.getElementById('book');
+  book.addEventListener('volumen-progress', e => heard.push(['progress', e.detail.at]));
+  book.addEventListener('volumen-end', () => heard.push(['end']));
+</script>

@@ -120,8 +120,8 @@ export interface LibEntry {
 
 /** What the reader needs from the engine, whichever shell hosts it. */
 export interface Core {
-  /** Reads a file into the library. */
-  importFile(bytes: Uint8Array, name: string): Promise<LibEntry>;
+  /** Reads a file into the library; with `chapters`, only those (an extract, web only). */
+  importFile(bytes: Uint8Array, name: string, chapters?: [number, number]): Promise<LibEntry>;
   /** The book's content; loads it from storage if needed. */
   open(id: string): Promise<BookData>;
   /** Encoded layout table for the given sections (all when empty). */
@@ -166,6 +166,9 @@ export interface Core {
   /** Readers' notes put into a Word file as Word comments, found there by their words:
    *  the file again, how many were placed, and which were not. */
   annotateDocx(docx: Uint8Array, notes: WordComment[]): Promise<{ bytes: Uint8Array; placed: number; unplaced: number[] }>;
+  /** Chapters `from` to `to` of a file (a book's kept file) as an EPUB of their own: a
+   *  sample to put online, or a manuscript as an EPUB. */
+  epubOf(bytes: Uint8Array, name: string, from: number, to: number): Promise<Uint8Array>;
   /** Sizes measured for rich blocks, `[index, w, h]`, kept with the book. */
   setImageSizes(id: string, sizes: [number, number, number][]): Promise<void>;
   /** Replaces the cover with a smaller image of it (the library's thumbnail). */

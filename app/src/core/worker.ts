@@ -1,10 +1,11 @@
 /// <reference lib="webworker" />
 // The engine for the web build. Book blobs live in IndexedDB here, so the main thread
 // never holds or parses a whole book.
-import init, { Engine, catchPanics, lastPanic, faultForTest, importerVersion, annotateDocx } from './pkg/vol_wasm.js';
+import init, { Engine, catchPanics, lastPanic, faultForTest, importerVersion, annotateDocx, epubOf } from './pkg/vol_wasm.js';
 import wasmUrl from './pkg/vol_wasm_bg.wasm?url';
 import type { BookData, BookHits, FamilyLoad, LibEntry } from './types';
 import { bundledFiles } from './fonts';
+import { at } from './root';
 import { tx, library } from './db';
 
 let eng: Engine;
@@ -27,7 +28,7 @@ function family(name: string): Promise<void> {
   if (!p) {
     p = (async () => {
       await ready;
-      const bufs = await Promise.all(files.map(f => { fetched.add('/fonts/' + f.file); return fetch('/fonts/' + f.file, { cache: 'force-cache' }).then(x => x.arrayBuffer()); }));
+      const bufs = await Promise.all(files.map(f => { const u = at('fonts/' + f.file); fetched.add(u); return fetch(u, { cache: 'force-cache' }).then(x => x.arrayBuffer()); }));
       for (const b of bufs) eng.addFont(name, new Uint8Array(b));
     })();
     loading.set(name, p);
@@ -41,8 +42,8 @@ function patterns(id: string): Promise<void> {
   if (!code) return Promise.resolve();
   let p = hyph.get(code);
   if (!p) {
-    fetched.add(`/hyph/${code}.bin`);
-    p = fetch(`/hyph/${code}.bin`, { cache: 'force-cache' }).then(r => r.arrayBuffer()).then(b => eng.addPatterns(code, new Uint8Array(b))).catch(() => {});
+    fetched.add(at(`hyph/${code}.bin`));
+    p = fetch(at(`hyph/${code}.bin`), { cache: 'force-cache' }).then(r => r.arrayBuffer()).then(b => eng.addPatterns(code, new Uint8Array(b))).catch(() => {});
     hyph.set(code, p);
   }
   return p;
@@ -75,13 +76,14 @@ async function ensure(id: string) {
 const ops: Record<string, (...a: any[]) => Promise<unknown>> = {
   /** Reads a file and stores the book (in a worker of its own, ended afterwards: see
    *  web.ts); the library's list is the reading worker's (`addEntry`). */
-  async importFile(bytes: Uint8Array, name: string, sample = false): Promise<LibEntry> {
+  async importFile(bytes: Uint8Array, name: string, sample = false, chapters?: [number, number]): Promise<LibEntry> {
     await ready;
-    const id = eng.import(bytes, name);
+    // (an extract of some chapters, for a page: kit/volumen.js)
+    const id = chapters ? eng.import_chapters(bytes, name, chapters[0], chapters[1]) : eng.import(bytes, name);
     const book = JSON.parse(eng.bookJson(id)!) as BookData;
     await tx('books', 'readwrite', s => s.put(eng.save(id)!, id));
-    // its file, to be read again by a later importer
-    await tx('sources', 'readwrite', s => s.put({ name, bytes }, id));
+    // its file, to be read again by a later importer (an extract is made again instead)
+    if (!chapters) await tx('sources', 'readwrite', s => s.put({ name, bytes }, id));
     const cover = eng.cover(id);
     if (cover) await tx('covers', 'readwrite', s => s.put(cover, id));
     // (a book read again: the images of its earlier reading go)
@@ -90,7 +92,7 @@ const ops: Record<string, (...a: any[]) => Promise<unknown>> = {
       const bytes = eng.imageBytes(id, i), mime = eng.imageMime(id, i);
       if (bytes && mime) await tx('images', 'readwrite', s => s.put({ mime, bytes }, `${id}/${i}`));
     }
-    return { id, title: book.title, author: book.author, year: book.year, words: book.words, chapters: book.sections.filter(s => s.k === 1).length, added: Date.now(), sample, cover: !!cover, importer: importerVersion(), source: true } satisfies LibEntry;
+    return { id, title: book.title, author: book.author, year: book.year, words: book.words, chapters: book.sections.filter(s => s.k === 1).length, added: Date.now(), sample, cover: !!cover, importer: importerVersion(), source: !chapters } satisfies LibEntry;
   },
   async open(id: string) {
     await ensure(id);
@@ -145,6 +147,11 @@ const ops: Record<string, (...a: any[]) => Promise<unknown>> = {
     await ready;
     const a = annotateDocx(docx, notes);
     return { bytes: a.bytes, report: a.report };
+  },
+  /** Chapters of a file as an EPUB of their own (crates/ingest/src/write.rs). */
+  async epubOf(bytes: Uint8Array, name: string, from: number, to: number) {
+    await ready;
+    return epubOf(bytes, name, from, to);
   },
   /** A book removed from the library, or imported again: the engine's copy goes. */
   async forget(id: string) {

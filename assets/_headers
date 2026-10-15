@@ -13,6 +13,11 @@
   ! X-Frame-Options
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' blob: data:; connect-src 'self' https:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors *
+# the elements, for other sites' pages: a module script is fetched across sites only
+# with leave (kit/volumen.js)
+/volumen.js
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=3600
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 /sw.js
