@@ -44,8 +44,10 @@
 
 <style>
   /* (one row the height of the window: a sheet's max-height is a share of it; in a row
-     sized by its content the share meant nothing, and a long sheet ran off the screen) */
-  .wrap { position: absolute; inset: var(--vv-top, 0px) 0 var(--kb, 0px) 0; z-index: 50; display: grid; grid-template-rows: minmax(0, 1fr); align-items: end; justify-items: center; }
+     sized by its content the share meant nothing, and a long sheet ran off the screen;
+     one column the width of the window, likewise: content wider than a small phone
+     shrinks or wraps rather than widening the sheet past the screen) */
+  .wrap { position: absolute; inset: var(--vv-top, 0px) 0 var(--kb, 0px) 0; z-index: 50; display: grid; grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); align-items: end; justify-items: center; }
   .back { position: absolute; inset: 0; background: var(--scrim); opacity: 0; transition: opacity .22s; }
   .sheet {
     position: relative; box-sizing: border-box; width: min(100%, 500px); max-height: calc(100% - max(24px, env(safe-area-inset-top) + 12px)); display: flex; flex-direction: column;
@@ -53,7 +55,7 @@
     transform: translateY(20px); opacity: 0; transition: transform .3s cubic-bezier(.2,.8,.2,1), opacity .22s;
     outline: none;
   }
-  .scroll { min-height: 0; border-radius: inherit; overflow-y: auto; overflow-x: hidden; touch-action: pan-y; overscroll-behavior: contain; padding: 24px 22px calc(22px + env(safe-area-inset-bottom)); display: grid; gap: 20px; }
+  .scroll { min-height: 0; border-radius: inherit; overflow-y: auto; overflow-x: hidden; touch-action: pan-y; overscroll-behavior: contain; padding: 24px 22px calc(22px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .sheet.wide { width: min(100%, 720px); }
   .in .sheet { transform: none; opacity: 1; }
   .in .back { opacity: 1; }

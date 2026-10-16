@@ -176,3 +176,17 @@ html:not(.touchui) .touch-only { display: none !important; }
 
 /* the app could not start (main.ts) */
 .failed { margin: 0; padding: 40px 24px; max-width: 46ch; font: 500 var(--t-m)/1.5 var(--f-ui); color: var(--ink-2); }
+
+/* High contrast (forced colours: Windows) takes away filled backgrounds, the sign of what
+   is chosen; there a chosen control is ringed in the system's highlight colour */
+@media (forced-colors: active) {
+  :is([aria-pressed="true"], [aria-selected="true"], [aria-checked="true"], [aria-current="true"], [aria-current="page"], .dot.on) {
+    outline: 2px solid Highlight; outline-offset: -2px;
+  }
+}
+
+/* more contrast asked for (macOS, iOS, Windows): the quieter inks nearer the ink (the
+   reader's themes do the same: reader.svelte.ts) */
+@media (prefers-contrast: more) {
+  :root { --ink-2: color-mix(in oklab, var(--ink) 90%, var(--paper)); --ink-3: color-mix(in oklab, var(--ink) 84%, var(--paper)); }
+}

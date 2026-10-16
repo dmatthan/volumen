@@ -86,6 +86,8 @@ export class Surface {
     const src = this.src();
     const el = document.createElement('div');
     el.className = src.isLeaf(k) ? 'col leafcol' : 'col';
+    // (a screen reader hears the page from spoken.ts; a leaf is heard while in focus)
+    el.setAttribute('aria-hidden', 'true');
     el.dataset.k = String(k);
     el.style.left = `${(k - this.base) * src.M.P}px`;
     el.innerHTML = src.column(k);

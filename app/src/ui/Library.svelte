@@ -9,6 +9,7 @@
   import EpubSheet from './EpubSheet.svelte';
   import { earlierDraft } from '../reader/draft';
   import { droppedFiles } from './files';
+  import { embedded } from '../core/embed';
   import { collectNotes, syncShares, hasVault } from '../core/service';
   import { isTauri } from '../core/shell';
   import { stale, reread } from '../reader/reread';
@@ -166,6 +167,25 @@
     collectSoon();
   }
 
+  /** The library kept for good: a browser may clear a site's storage when it is short of
+   *  room, and Safari clears it after some days unvisited unless the site is installed.
+   *  Asked once a book of one's own is added (Firefox asks the person; Chrome and Safari
+   *  decide by themselves); where it is not granted in Safari, said once how to keep it. */
+  let keepAsked = false;
+  async function keepLibrary() {
+    if (keepAsked || isTauri || embedded || !navigator.storage?.persist) return;
+    keepAsked = true;
+    if (await navigator.storage.persisted().catch(() => false)) return;
+    if (await navigator.storage.persist().catch(() => false)) return;
+    const safari = /Safari\//.test(navigator.userAgent) && !/Chrome\/|Chromium\/|CriOS|FxiOS|EdgiOS|Android/.test(navigator.userAgent);
+    const installed = matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (!safari || installed) return;
+    const touch = document.documentElement.classList.contains('touchui');
+    setTimeout(() => hint(touch ? 'touch-keep' : 'keep', touch
+      ? 'Safari may clear this library if Volumen is not opened for a week or so. To keep it: Share, then Add to Home Screen; or back it up, at the foot of the library.'
+      : 'Safari may clear this library if Volumen is not opened for a week or so. To keep it: File, then Add to Dock; or back it up, at the foot of the library.', 9000), 4000);
+  }
+
   /** Readers' notes on books shared through the service, fetched when the library shows
    *  (at most every few minutes; only for a writer with shared books). */
   let collectedAt = 0;
@@ -320,6 +340,7 @@
         if (before) draftOf = { from: before, to: e };
         if (mine) addToShelf(mine.id, e.id);
         toast(`Added “${e.title}”.`, 3600);
+        keepLibrary();
       } catch (err) {
         const m = `Couldn’t open ${f.name}: ${(err as Error).message}`;
         toast(m, Math.max(5200, m.length * 70));
@@ -345,7 +366,7 @@
 
   async function remove(b: LibEntry) {
     await core.remove(b.id);
-    for (const k of ['pos.', 'marks.', 'seen.', 'lines.', 'session.', 'state.', 'opened.', 'nb.']) kv.del(k + b.id);
+    for (const k of ['pos.', 'marks.', 'seen.', 'far.', 'progress.', 'lines.', 'session.', 'state.', 'opened.', 'nb.']) kv.del(k + b.id);
     forgetBook(b.id);
     removing = null;
     toast('Removed from the library.');
@@ -460,7 +481,7 @@
     {/if}
   </div>
   {#if view === 'books'}<LibraryResults bind:this={results} {core} {reader} {query} {books} />{/if}
-  <p class="foot" hidden={view !== 'books'}>Books stay on this device. <button class="link-btn" onclick={backUp}>Back up the library…</button> (Restore one by adding its file.)<span class="keys-only"> Use the arrow keys or H J K L to move, Enter to open, A for a book’s collections, [ and ] for the shelves, X to remove.</span></p>
+  <p class="foot" hidden={view !== 'books'}>Books stay on this device. <button class="link-btn" onclick={backUp}>Back up the library…</button> (Restore one by adding its file.) <span class="keys-only">Use the arrow keys or H J K L to move, Enter to open, A for a book’s collections, [ and ] for the shelves, X to remove.</span></p>
   <!-- (a phone's picker greys out what it cannot match to a type it knows, notes files
        among them; there every file may be chosen, and the importer says what it is) -->
   <input type="file" bind:this={file} accept={touchUI() ? undefined : '.epub,.docx,.md,.markdown,.txt,.vnotes,.json,.jsonld,.vbackup,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain'} multiple
@@ -573,13 +594,13 @@
   .more svg { width: 18px; height: 18px; fill: currentColor; }
   :global(html:not(.touchui)) .slot:hover .more, .slot:focus-within .more { display: grid; position: relative; z-index: 1; animation: more-in .15s ease-out; }
   @keyframes more-in { from { opacity: 0; } }
-  .cols { display: grid; gap: 2px; }
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .col-row { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 10px; border-radius: var(--r-s); cursor: pointer; font: 600 var(--t-m)/1.2 var(--f-ui); color: var(--ink); }
   :global(html:not(.touchui)) .col-row:hover { background: var(--hover); }
   .col-row input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
   .col-row .cn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .new { display: flex; gap: 8px; margin-top: 8px; }
-  .new input { flex: 1; min-width: 0; height: 44px; box-sizing: border-box; border: 1.5px solid var(--rule); border-radius: var(--r-m); background: var(--surface); color: var(--ink); font: 500 var(--t-m)/1 var(--f-ui); padding: 0 14px; outline: none; }
+  .new input { flex: 1; min-width: 0; width: 0; height: 44px; box-sizing: border-box; border: 1.5px solid var(--rule); border-radius: var(--r-m); background: var(--surface); color: var(--ink); font: 500 var(--t-m)/1 var(--f-ui); padding: 0 14px; outline: none; }
   .new input:focus { border-color: var(--accent); }
   h1 { margin: 0; font: 700 var(--t-xxl)/1.1 var(--f-ui); letter-spacing: -0.02em; color: var(--ink); }
   .head-acts { display: flex; gap: 8px; }

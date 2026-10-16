@@ -74,7 +74,8 @@ a folder (here `/volumen/`). Two elements place it on a page:
 `chapters` (`3`, `1-3`), `theme`, `end-href`/`end-label` (a card at the end) and
 `remember` (keep the reader's place in the browser) are optional. It sends
 `volumen-progress` (`detail.at`, 0 to 1) and `volumen-end`. `<volumen-library>` makes a
-shelf from `[{ "title", "author", "src", "cover" }]`. See `examples/`.
+shelf from `[{ "title", "author", "src", "cover" }]`; without `cover`, an EPUB's own
+cover is read from the file by range requests. See `examples/`.
 
 To put a sample online without the rest of the book, write one with only those chapters
 (the app's Save as EPUB, or

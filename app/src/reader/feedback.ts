@@ -1,6 +1,6 @@
 import { kv } from '../core/kv';
 import type { BookData, Core, NoteAnchor } from '../core/types';
-import type { Annotation } from './annotations';
+import { isReaction, type Annotation, type Reaction } from './annotations';
 import { chapTitle } from './render';
 import { isNotesMarkdown, parseNotesMarkdown } from './notesmd';
 import { isWebAnno, fromWebAnno } from './webanno';
@@ -36,6 +36,8 @@ export interface FileNote extends NoteAnchor {
   kind: 'highlight' | 'mark';
   color?: number;
   note?: string;
+  /** A reaction (D6). */
+  react?: Reaction;
   created: number;
   updated: number;
 }
@@ -47,7 +49,13 @@ export interface NotesFile {
   from: Me;
   sent: number;
   notes: FileNote[];
+  /** How far the reader got (D7), unless they said not to send it. */
+  progress?: Progress;
 }
+
+/** Where a reader is and the furthest they have read, as shares of the book (0 to 1),
+ *  with the name of the chapter they are in; done: they reached the end. */
+export interface Progress { at: number; furthest: number; where: string; done: boolean }
 
 /** The opening words of a block, as an anchor for something that belongs to all of it. */
 function opening(b: { key: string; t: string }, pos: number | undefined): NoteAnchor {
@@ -66,7 +74,7 @@ export function fileNotes(book: BookData, ann: Annotation[], marks: Iterable<str
   const notes: FileNote[] = [];
   for (const a of ann) {
     if (a.lost) continue;
-    notes.push({ id: a.id, kind: 'highlight', key: a.key, s: a.s, e: a.e, quote: a.quote, prefix: a.prefix, suffix: a.suffix, pos: a.pos ?? posOf(a.key), color: a.color, note: a.note || undefined, created: a.created, updated: a.updated });
+    notes.push({ id: a.id, kind: 'highlight', key: a.key, s: a.s, e: a.e, quote: a.quote, prefix: a.prefix, suffix: a.suffix, pos: a.pos ?? posOf(a.key), color: a.color, note: a.note || undefined, react: a.react, created: a.created, updated: a.updated });
   }
   const now = Date.now();
   for (const key of marks) {
@@ -112,14 +120,16 @@ function checked(v: any): NotesFile | string {
   if (!v.book?.id || !v.from?.id || !Array.isArray(v.notes)) return 'This notes file is incomplete.';
   // (files from before chapter lines were removed may hold them: they are left out)
   const ok = (n: any) => n && typeof n.key === 'string' && typeof n.quote === 'string' && Number.isFinite(n.s) && Number.isFinite(n.e) && ['highlight', 'mark'].includes(n.kind);
-  return { ...v, from: { id: String(v.from.id), name: String(v.from.name || 'A reader').slice(0, 60) }, notes: v.notes.filter(ok) };
+  const share = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 0);
+  const pr = v.progress && typeof v.progress === 'object' ? { at: share(v.progress.at), furthest: share(v.progress.furthest), where: String(v.progress.where ?? '').slice(0, 80), done: v.progress.done === true } : undefined;
+  return { ...v, from: { id: String(v.from.id), name: String(v.from.name || 'A reader').slice(0, 60) }, notes: v.notes.filter(ok).map((n: FileNote) => (n.react === undefined || isReaction(n.react) ? n : { ...n, react: undefined })), progress: pr };
 }
 
 /* ---------- other readers' notes on a book ---------- */
 
 /** A note from another reader, placed on this book. */
 export interface FbNote extends FileNote { lost?: boolean; was?: string; sec?: number }
-interface FbReader { name: string; sent: number; notes: FbNote[] }
+interface FbReader { name: string; sent: number; notes: FbNote[]; progress?: Progress }
 /** Reader colours: the n-th reader of a book is drawn in `--r{n % 6 + 1}`. */
 export const READER_COLOURS = 6;
 
@@ -141,7 +151,13 @@ export class Feedback {
 
   /** Readers in the order they first sent notes, with their colour. */
   list() {
-    return Object.entries(this.readers).map(([id, r], i) => ({ id, name: r.name, sent: r.sent, colour: i % READER_COLOURS + 1, count: r.notes.filter(n => !n.lost).length, lost: r.notes.filter(n => n.lost).length }));
+    return Object.entries(this.readers).map(([id, r], i) => ({ id, name: r.name, sent: r.sent, colour: i % READER_COLOURS + 1, count: r.notes.filter(n => !n.lost).length, lost: r.notes.filter(n => n.lost).length, progress: r.progress }));
+  }
+  /** The reactions (D6) of the readers shown, counted: what a manuscript's readers felt. */
+  reactions(): [Reaction, number][] {
+    const n = new Map<Reaction, number>();
+    for (const [r, rd] of Object.entries(this.readers)) if (!this.hidden.has(r)) for (const x of rd.notes) if (x.react && !x.lost) n.set(x.react, (n.get(x.react) ?? 0) + 1);
+    return [...n].sort((a, b) => b[1] - a[1]);
   }
   colourOf(id: string) { return Object.keys(this.readers).indexOf(id) % READER_COLOURS + 1; }
   get size() { return Object.keys(this.readers).length; }
@@ -179,7 +195,7 @@ export class Feedback {
   add(f: NotesFile): boolean {
     const had = this.readers[f.from.id];
     if (had && had.sent > f.sent) return false;
-    this.readers[f.from.id] = { name: f.from.name || 'A reader', sent: f.sent, notes: f.notes.map(n => ({ ...n })) };
+    this.readers[f.from.id] = { name: f.from.name || 'A reader', sent: f.sent, notes: f.notes.map(n => ({ ...n })), progress: f.progress };
     this.save();
     return true;
   }
@@ -254,12 +270,12 @@ export class Feedback {
     for (const [r, rd] of Object.entries(this.readers)) if (!this.hidden.has(r)) for (const n of rd.notes) if (!n.lost) all.push({ r, n });
     const pos = (x: { n: FbNote }) => { const h = this.keyIndex.get(x.n.key); return !h ? 9e15 : h[0] * 1e9 + h[1] * 1e4; };
     all.sort((a, b) => pos(a) - pos(b) || a.n.s - b.n.s);
-    const groups: { key: string; sec: number; where: string; s: number; e: number; quote: string; voices: { reader: string; colour: number; kind: FbNote['kind']; note?: string; was?: string; rid: string; n: FbNote }[] }[] = [];
+    const groups: { key: string; sec: number; where: string; s: number; e: number; quote: string; voices: { reader: string; colour: number; kind: FbNote['kind']; note?: string; react?: Reaction; was?: string; rid: string; n: FbNote }[] }[] = [];
     for (const x of all) {
       const h = this.keyIndex.get(x.n.key)!;
       const t = this.book.sections[h[0]].blocks[h[1]].t;
       const last = groups[groups.length - 1];
-      const voice = { reader: this.readers[x.r].name, colour: this.colourOf(x.r), kind: x.n.kind, note: x.n.note, was: x.n.was, rid: x.r, n: x.n };
+      const voice = { reader: this.readers[x.r].name, colour: this.colourOf(x.r), kind: x.n.kind, note: x.n.note, react: x.n.react, was: x.n.was, rid: x.r, n: x.n };
       if (last && last.key === x.n.key && x.n.s < last.e) {
         last.voices.push(voice);
         last.e = Math.max(last.e, x.n.e);
@@ -284,7 +300,7 @@ export function receive(f: NotesFile, bookId: string): boolean {
   const all = kv.get<Record<string, FbReader>>('fb.' + bookId, {});
   const had = all[f.from.id];
   if (had && had.sent > f.sent) return false;
-  all[f.from.id] = { name: f.from.name || 'A reader', sent: f.sent, notes: f.notes };
+  all[f.from.id] = { name: f.from.name || 'A reader', sent: f.sent, notes: f.notes, progress: f.progress };
   kv.set('fb.' + bookId, all);
   return true;
 }

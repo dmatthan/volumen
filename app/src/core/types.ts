@@ -1,7 +1,7 @@
 /** The book as the reader receives it (offsets are UTF-16). Mirrors vol_model::js. */
 /** What the importer makes of a file, as a number: `vol_ingest::VERSION` (keep the same).
  *  Books read by an earlier one are read again from their kept file (reader/reread.ts). */
-export const IMPORTER_VERSION = 3;
+export const IMPORTER_VERSION = 4;
 
 export interface BookData {
   id: string;

@@ -221,6 +221,8 @@
   @media (max-width: 640px), (pointer: coarse) { .go { justify-content: center; } }
   :global(.touchui) .go { justify-content: center; }
   .go-l { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  /* (on a narrow phone its label wraps, as the button beside it does, rather than being cut) */
+  @media (max-width: 380px) { .go-l { white-space: normal; text-overflow: clip; } }
   .go :global(kbd) { flex: none; }
   .m-marks { grid-row: 2 / 6; overflow-y: auto; overflow-x: hidden; touch-action: pan-y; background: var(--ground); padding: 8px 18px 24px; }
   .mk-inner { max-width: 680px; margin: 0 auto; display: grid; gap: 22px; }

@@ -351,7 +351,7 @@ export async function fetchSealed(id: string): Promise<Uint8Array> {
 
 /** What a notes file says, as a short string: unchanged notes are not sent again. */
 function digestOf(f: NotesFile): string {
-  const t = JSON.stringify([f.from.name, f.notes]);
+  const t = JSON.stringify([f.from.name, f.notes, f.progress]);
   let h = 0x811c9dc5;
   for (let i = 0; i < t.length; i++) h = Math.imul(h ^ t.charCodeAt(i), 0x01000193);
   return `${t.length}:${(h >>> 0).toString(36)}`;

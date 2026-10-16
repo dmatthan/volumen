@@ -37,6 +37,7 @@
       ['N  Shift+N', 'With the find field put away: next or previous match (Esc ends the search)'],
       ['Hold on a word', 'Selects it; drag to take more, word by word'],
       ['then 1–4  N  C', 'Highlight in a colour, add a note, copy with reference'],
+      ['then 5–8', 'In a book sent to you: loved, confused, slow, a typo (for its writer)'],
       ['V', 'Choose a paragraph with J and K: H highlights it, N adds a note, O opens its image or footnote'],
       ['Click a note marker', 'The note beside it; G goes to where it is printed'],
       [';', 'Your notes in view, each beside its line (a dot marks them; hover one to see it alone)'],

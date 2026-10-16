@@ -17,8 +17,10 @@ pub use vol_model::Book;
 /// would come out differently, so books read by an earlier one are read again from their
 /// file (the app keeps it). Keep `IMPORTER_VERSION` in app/src/core/types.ts the same.
 /// 1: before the version was kept. 2: the publisher's styles (hidden text, styles,
-/// alignment), rich blocks (diagram tables, SVG, MathML).
-pub const VERSION: u32 = 3;
+/// alignment), rich blocks (diagram tables, SVG, MathML). 3: apparatus by its semantics.
+/// 4: writing without spaces (Chinese, Japanese) counted fairly, so its short chapters
+/// are not taken for title pages; a book of pictures keeps its pages.
+pub const VERSION: u32 = 4;
 use vol_model::{Meta, Section};
 
 #[derive(Debug)]

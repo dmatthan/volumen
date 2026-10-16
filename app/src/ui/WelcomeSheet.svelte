@@ -31,6 +31,7 @@
       <li>Hold on a word and drag to select; then 1–4 highlights it, N adds a note.</li>
       <li>Your notes stay on this device until you send them: M, then Notebook, then Send my notes.</li>
     {/if}
+    <li>How far you have read goes with them; you can turn that off when you send.</li>
   </ul>
   <div class="acts"><button class="btn primary" data-autofocus onclick={close}>Start reading {#if !touch}<kbd>Enter</kbd>{/if}</button></div>
 </Sheet>

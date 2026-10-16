@@ -389,12 +389,40 @@ impl Block {
 
 impl Book {
     pub fn words(&self) -> usize {
-        self.sections
-            .iter()
-            .flat_map(|s| &s.blocks)
-            .filter(|b| b.kind != Kind::Image)
-            .map(|b| b.text.split_whitespace().count())
-            .sum()
+        self.sections.iter().flat_map(|s| &s.blocks).filter(|b| b.kind != Kind::Image).map(|b| words(&b.text)).sum()
+    }
+}
+
+/// Words in a text: what lies between spaces, and in writing without spaces, about what
+/// a word is worth there (Chinese and Japanese: two characters; Thai, Lao, Khmer and
+/// Burmese: five). Counting by spaces alone made a Chinese paragraph one word.
+pub fn words(s: &str) -> usize {
+    let (mut n, mut word, mut han, mut sea) = (0usize, false, 0usize, 0usize);
+    for c in s.chars() {
+        match unspaced(c) {
+            1 => han += 1,
+            2 => sea += 1,
+            // (East Asian punctuation parts words as a space does)
+            _ if c.is_whitespace() || (c as u32 >= 0x2E80 && !c.is_alphanumeric()) => word = false,
+            _ if !word => {
+                n += 1;
+                word = true;
+            }
+            _ => {}
+        }
+        if unspaced(c) != 0 {
+            word = false;
+        }
+    }
+    n + han.div_ceil(2) + sea.div_ceil(5)
+}
+
+/// 1: Han and kana; 2: the scripts of South-East Asia written without spaces; 0: others.
+fn unspaced(c: char) -> u8 {
+    match c as u32 {
+        0x3040..=0x30FF | 0x31F0..=0x31FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF | 0xFF66..=0xFF9F | 0x20000..=0x3134F => 1,
+        0x0E00..=0x0EFF | 0x1000..=0x109F | 0x1780..=0x17FF => 2,
+        _ => 0,
     }
 }
 
@@ -776,5 +804,23 @@ mod repair_tests {
         assert_eq!(b.runs, vec![Run { start: 1, end: 4, style: 1 }]);
         assert_eq!((b.links[0].start, b.links[0].end), (0, 3));
         assert_eq!(book.repair(), 0);
+    }
+}
+
+#[cfg(test)]
+mod words_tests {
+    use super::words;
+
+    #[test]
+    fn counts_words_with_and_without_spaces() {
+        // spaced text as before: whatever lies between spaces, a lone dash too
+        assert_eq!(words("The fox didn't run — twice."), 6);
+        assert_eq!(words("  "), 0);
+        // Chinese: 11 characters, about six words; the punctuation counts for nothing
+        assert_eq!(words("子曰：「學而時習之，不亦說乎？」"), 6);
+        // Japanese, mixed with digits
+        assert_eq!(words("第1章 吾輩は猫である。"), 6);
+        // Thai: 10 letters, two words' worth
+        assert_eq!(words("สวัสดีครับ"), 2);
     }
 }

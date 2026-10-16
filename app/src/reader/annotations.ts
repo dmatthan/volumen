@@ -5,6 +5,13 @@ import type { Core } from '../core/types';
 /** A highlight (optionally with a note) over part of one block. Offsets are UTF-16 into
  *  the block's text; the quote and its context let it find its text again if the book is
  *  re-imported and the blocks shift. */
+/** One-tap reactions a reader of a manuscript gives a passage (D6), in the order of their
+ *  keys in the chip (5 to 8). */
+export const REACTIONS = ['loved', 'confused', 'slow', 'typo'] as const;
+export type Reaction = (typeof REACTIONS)[number];
+export const REACTION_LABEL: Record<Reaction, string> = { loved: 'Loved this', confused: 'Confused here', slow: 'Slow here', typo: 'A typo' };
+export const isReaction = (r: unknown): r is Reaction => REACTIONS.includes(r as Reaction);
+
 export interface Annotation {
   id: string;
   key: string;
@@ -24,6 +31,8 @@ export interface Annotation {
   was?: string;
   /** Not found in this version of the book: kept, but not drawn or listed. */
   lost?: boolean;
+  /** A reaction (D6), with or without a note. */
+  react?: Reaction;
 }
 
 /** Characters of context kept either side of a highlight, to find it again. */
@@ -136,7 +145,7 @@ export class Annotations {
     return a;
   }
 
-  update(id: string, patch: Partial<Pick<Annotation, 'color' | 'note'>>) {
+  update(id: string, patch: Partial<Pick<Annotation, 'color' | 'note' | 'react'>>) {
     const a = this.list.find(x => x.id === id);
     if (!a) return;
     Object.assign(a, patch, { updated: Date.now() });

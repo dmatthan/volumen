@@ -103,7 +103,15 @@ export class Motion {
   toward(target: number, T?: number, kick = false) {
     target = this.clamp(Math.round(target));
     const h = target - this.p;
-    if (this.host.reduced()) { this.jump(target); this.host.rest(target); return; }
+    if (this.host.reduced()) {
+      // with less motion, a tap or a key moves at once; but a sheet a hand has moved part
+      // of the way (a drag let go) is carried the rest briefly, not snapped: the motion
+      // is the hand's own, and a jump there reads as a jolt
+      const midway = Math.abs(this.p - Math.round(this.p)) > 0.02 || this.mode === 'direct';
+      if (!midway || Math.abs(h) > 1.5) { this.jump(target); this.host.rest(target); return; }
+      T = Math.min(0.16, 0.07 + 0.09 * Math.abs(h));
+      kick = false;
+    }
     if (T == null) T = TAP_S + TAP_EXTRA_S * Math.max(0, Math.abs(h) - 1);
     if (Math.abs(h) < 1e-4 && Math.abs(this.v) < 1e-3) { this.jump(target); this.host.rest(target); return; }
     // from standstill, start with some velocity: the sheet answers on the first frame

@@ -2,6 +2,7 @@
   import type { Reader } from '../reader/reader.svelte';
   import { ui } from '../reader/reader.svelte';
   import { fold } from '../reader/notebook';
+  import { REACTION_LABEL } from '../reader/annotations';
 
   /** Other readers' notes on this book, gathered by passage: the words, then every
    *  reader's say on them, in reading order. A reader's chip shows or hides their notes
@@ -11,6 +12,7 @@
   const fb = reader.fb!;
   let version = $state(0);
   const readers = $derived.by(() => { version; ui.annVersion; return fb.list(); });
+  const reactions = $derived.by(() => { version; ui.annVersion; return fb.reactions(); });
   /** Reading order, or the passages most readers stopped at first (where it matters
    *  most); all, or only those not yet dealt with. Kept for the session. */
   let order: 'book' | 'most' = $state('book');
@@ -56,6 +58,14 @@
       </span>
     {/each}
   </div>
+  {#if readers.some(r => r.progress)}
+    <!-- how far each reader got (D7), as they last sent it -->
+    <p class="far">{readers.filter(r => r.progress).map(r => r.progress!.done ? `${r.name} finished it` : `${r.name} has read ${Math.round(r.progress!.furthest * 100)}%${r.progress!.where ? `, and is at ${r.progress!.where}` : ''}`).join('; ')}.</p>
+  {/if}
+  {#if reactions.length}
+    <!-- the readers' reactions (D6), counted -->
+    <p class="far">{reactions.map(([r, n]) => `${REACTION_LABEL[r]} ${n}`).join(' · ')}</p>
+  {/if}
   {#if readers.some(r => r.lost)}
     <p class="lost">{readers.filter(r => r.lost).map(r => `${r.lost} of ${r.name}’s`).join(', ')} {readers.reduce((n, r) => n + r.lost, 0) === 1 ? 'is' : 'are'} on words no longer in this version, and not shown.</p>
   {/if}
@@ -83,7 +93,8 @@
         {#each g.voices as v}
           <span class="v" style="--rc:var(--r{v.colour})">
             <span class="nm">{v.reader}</span>
-            {#if v.note}<span class="t">{v.note}</span>{:else if kindLabel[v.kind]}<span class="t k">{kindLabel[v.kind]}</span>{:else}<span class="t k">Highlighted</span>{/if}
+            {#if v.react}<span class="t re">{REACTION_LABEL[v.react]}</span>{/if}
+            {#if v.note}<span class="t">{v.note}</span>{:else if kindLabel[v.kind]}<span class="t k">{kindLabel[v.kind]}</span>{:else if !v.react}<span class="t k">Highlighted</span>{/if}
             {#if v.was}<span class="was">on earlier words: “{v.was}”</span>{/if}
           </span>
         {/each}
@@ -108,7 +119,7 @@
   .x { appearance: none; border: 0; background: none; cursor: pointer; width: 28px; height: 28px; border-radius: 14px; color: var(--ink-3); font: 500 18px/1 var(--f-ui); }
   :global(html:not(.touchui)) .x:hover { background: var(--hover); color: var(--ink); }
   .x.sure { width: auto; padding: 0 10px; font: 650 13px/1 var(--f-ui); color: var(--ink); background: var(--hover); }
-  .lost, .empty { margin: 0; font: 500 var(--t-s)/1.5 var(--f-ui); color: var(--ink-3); }
+  .far, .lost, .empty { margin: 0; font: 500 var(--t-s)/1.5 var(--f-ui); color: var(--ink-3); }
   .ch { margin: 8px 0 -6px; font: 650 var(--t-s)/1.3 var(--f-ui); color: var(--ink-3); }
   .grp { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 8px; padding: 8px 12px; border-radius: var(--r-s); }
   :global(html:not(.touchui)) .grp:hover { background: var(--hover); }
@@ -131,5 +142,6 @@
   :global(html:not(.touchui)) .st button:hover { color: var(--ink); background: var(--hover); }
   .t { font: 500 var(--t-m)/1.45 var(--f-ui); color: var(--ink); white-space: pre-wrap; }
   .t.k { color: var(--ink-3); font-size: var(--t-s); }
+  .t.re { color: var(--rc, var(--accent)); font-weight: 650; font-size: var(--t-s); }
   .was { font: 500 13px/1.4 var(--f-ui); color: var(--ink-3); font-style: italic; }
 </style>

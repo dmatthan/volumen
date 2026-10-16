@@ -140,7 +140,7 @@ pub fn parse(bytes: &[u8], name: &str) -> Result<crate::Book, Error> {
                 sections.push(Section { kind: SectionKind::Chapter, part: String::new(), label: format!("Part {n}"), num: n.to_string(), title: String::new(), blocks: Vec::new() });
                 w = 0;
             }
-            w += b.text.split_whitespace().count();
+            w += vol_model::words(&b.text);
             sections.last_mut().unwrap().blocks.push(b);
         }
     }

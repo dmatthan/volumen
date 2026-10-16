@@ -5,10 +5,15 @@
  *  only passages not yet marked done or won't change. */
 import type { BookData, WordComment } from '../core/types';
 import type { Feedback } from './feedback';
+import { REACTION_LABEL } from './annotations';
 
 type Passage = ReturnType<Feedback['passages']>[number];
 
-const said = (v: Passage['voices'][number]) => v.note || (v.kind === 'mark' ? 'Marked this paragraph' : 'Highlighted');
+// (a reaction first: "Confused here: …", or alone)
+const said = (v: Passage['voices'][number]) => {
+  const react = v.n.react ? REACTION_LABEL[v.n.react] : '';
+  return react && v.note ? `${react}: ${v.note}` : react || v.note || (v.kind === 'mark' ? 'Marked this paragraph' : 'Highlighted');
+};
 const iso = (t: number) => new Date(t || Date.now()).toISOString().replace(/\.\d+Z$/, 'Z');
 const pick = (fb: Feedback, open: boolean) => fb.passages().filter(p => !open || !p.st);
 const STATUS = { done: 'Done', wont: 'Won’t change' } as const;

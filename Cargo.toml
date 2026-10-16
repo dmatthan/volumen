@@ -29,6 +29,10 @@ inherits = "release"
 strip = false
 debug = 1
 
+# Line numbers are enough for a backtrace; full debug info made target/ tens of gigabytes.
+[profile.dev]
+debug = "line-tables-only"
+
 # The engine is the hot path: optimise it even in development builds.
 [profile.dev.package."*"]
 opt-level = 3

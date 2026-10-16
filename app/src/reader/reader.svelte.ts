@@ -11,14 +11,15 @@ import { readTokens, hueAt } from './tokens';
 import { calibrate } from './calibrate';
 import { settings, reduceMotion, SIZES } from './settings.svelte';
 import { themes, themeById, resolve, loadFamily, fontsReady, type Resolved } from './themes.svelte';
-import { Annotations } from './annotations';
+import { Annotations, type Reaction } from './annotations';
 import { Finder } from './find.svelte';
 import { notebookOf, saveDigest } from './notebook';
-import { Feedback, parseNotes, targetOf, notesFile, type NotesFile } from './feedback';
+import { Feedback, parseNotes, targetOf, notesFile, type NotesFile, type Progress } from './feedback';
 import { sendQuietly } from '../core/service';
 import { embedded, embedMoved, embedOpts } from '../core/embed';
 import { isMine, restoreInto, restored } from './restore';
 import { hint } from './hints';
+import { spokenPage } from './spoken';
 
 export type Sheet = null | 'settings' | 'theme' | 'help' | 'remove' | 'note' | 'book' | 'shelf' | 'send' | 'share' | 'invite' | 'welcome' | 'fbexport' | 'draft' | 'newdraft' | 'epub';
 
@@ -92,6 +93,8 @@ export class Reader {
   seen = new Set<string>();
   /** Columns seen since the book was opened (for the hints). */
   visited = new Set<number>();
+  /** The furthest this reader has read in the book, as a share of it (kept: `far.<id>`). */
+  furthest = 0;
   reading = false;
 
   stage!: HTMLElement;
@@ -135,6 +138,7 @@ export class Reader {
       this.resizeT = window.setTimeout(() => this.relayout(), 140);
     }).observe(stage);
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.themeChanged());
+    matchMedia('(prefers-contrast: more)').addEventListener('change', () => this.themeChanged());
     this.prewarm();
   }
   private resizeT = 0;
@@ -165,8 +169,10 @@ export class Reader {
       else {
         const { paper, ink, accent } = pal;
         set('--paper', paper); set('--ink', ink); set('--accent', accent); set('--focus', accent); set('--accent-ink', paper);
-        set('--ink-2', `color-mix(in oklab, ${ink} 74%, ${paper})`);
-        set('--ink-3', `color-mix(in oklab, ${ink} 62%, ${paper})`);   // (4.5:1 at least: WCAG AA)
+        // (more contrast asked for: the quieter inks nearer the ink)
+        const more = matchMedia('(prefers-contrast: more)').matches;
+        set('--ink-2', `color-mix(in oklab, ${ink} ${more ? 90 : 74}%, ${paper})`);
+        set('--ink-3', `color-mix(in oklab, ${ink} ${more ? 84 : 62}%, ${paper})`);   // (4.5:1 at least: WCAG AA)
         set('--rule', `color-mix(in oklab, ${ink} 16%, ${paper})`);
         set('--veil', `color-mix(in srgb, ${paper} 62%, transparent)`);
         set('--veil-soft', `color-mix(in srgb, ${paper} 36%, transparent)`);
@@ -277,7 +283,40 @@ export class Reader {
   }
 
   /** This reader's notes on the open book, as a notes file. */
-  myNotes() { return notesFile(this.book!, this.ann?.list ?? [], this.marks, this.strip!.keyIndex); }
+  myNotes() {
+    const f = notesFile(this.book!, this.ann?.list ?? [], this.marks, this.strip!.keyIndex);
+    // how far they got goes with their notes, unless they said not (D7)
+    if (kv.get('progress.' + this.book!.id, true)) f.progress = this.progress();
+    return f;
+  }
+
+  /** Where the reader is, and the furthest they have read (to the hundredth: a page or
+   *  two read changes nothing to send). */
+  progress(): Progress {
+    const strip = this.strip!, at = this.viewEnd();
+    const r = (x: number) => Math.round(x * 100) / 100;
+    const it = strip.itemAt(this.cur);
+    return { at: r(at), furthest: r(Math.max(this.furthest, at)), where: it?.type === 'sect' ? chapName(this.book!, it.sec) : this.headFor(this.cur), done: Math.max(this.furthest, at) >= 0.995 || strip.itemAt(this.cur)?.type === 'colophon' };
+  }
+  /** The share of the book read by the end of the page in view. */
+  private viewEnd() { const strip = this.strip!; return this.textShare(Math.min(strip.N - 1, this.cur + this.M.N - 1)); }
+  /** How far through the book's text column k is: its first paragraph's place among all
+   *  of them (0 to 1). By the text, not by columns, which are estimates until the whole
+   *  book is laid out: the same in any layout, size or device. */
+  private textShare(k: number): number {
+    const strip = this.strip!, book = this.book!;
+    if (this.starts?.book !== book) {
+      const start: number[] = [];
+      let n = 0;
+      for (const s of book.sections) { start.push(n); n += s.blocks.length; }
+      this.starts = { book, start, total: Math.max(1, n) };
+    }
+    const { start, total } = this.starts, a = strip.anchorAt(k);
+    if (!a) return 0;
+    if ('key' in a) { const h = strip.keyIndex.get(a.key); return h ? (start[h[0]] + h[1]) / total : 0; }
+    return a.leaf === 'colophon' ? 1 : a.leaf === 'title' ? 0 : (start[a.sec] ?? 0) / total;
+  }
+  private starts?: { book: BookData; start: number[]; total: number };
 
   /** Rich blocks' XHTML, by image index (rich.ts). */
   private richText = new Map<number, string>();
@@ -410,6 +449,7 @@ export class Reader {
       this.marks = new Set(kv.get<string[]>('marks.' + id, []));
       this.seen = new Set(kv.get<string[]>('seen.' + id, []));
       this.visited = new Set();
+      this.furthest = kv.get<number>('far.' + id, 0);
       // (what earlier versions kept per book: a line per chapter, a stopping point)
       kv.del('lines.' + id); kv.del('session.' + id);
       this.reading = false;
@@ -582,12 +622,15 @@ export class Reader {
     clearTimeout(this.saveT); clearTimeout(this.seenT); clearTimeout(this.dwellT);
     const id = this.book.id;
     kv.set('pos.' + id, this.strip.anchorAt(this.cur));
+    kv.set('far.' + id, this.furthest);
     kv.set('seen.' + id, [...this.seen]);
     kv.set('marks.' + id, [...this.marks]);
     if (this.digestT) { clearTimeout(this.digestT); this.digestT = 0; this.saveDigest(); }
     const it = this.strip.itemAt(this.cur);
     // a book sent by link: the reader's notes go back by themselves, if they changed
-    if (this.ann && kv.get('joined.' + id, null)) sendQuietly(id, this.myNotes());
+    // (not while it is still opening: it has not found its place yet, and how far the
+    // reader got would read as changed)
+    if (this.ann && !this.opening && kv.get('joined.' + id, null)) sendQuietly(id, this.myNotes());
     kv.set('state.' + id, { where: it && it.sec >= 0 && it.type !== 'colophon' ? chapName(this.book, Math.min(it.sec, this.book.sections.length - 1)) : it?.type === 'colophon' ? 'At the end' : 'At the beginning', done: it?.type === 'colophon' });
   }
 
@@ -652,10 +695,17 @@ export class Reader {
     for (const c of focus) this.visited.add(c);
     this.teach(k);
     clearTimeout(this.dwellT); this.dwellT = window.setTimeout(() => focus.forEach(c => this.markSeen(c)), 1600);
-    clearTimeout(this.saveT); this.saveT = window.setTimeout(() => this.book && kv.set('pos.' + this.book.id, strip.anchorAt(this.cur)), 400);
+    this.furthest = Math.max(this.furthest, this.viewEnd());
+    clearTimeout(this.saveT); this.saveT = window.setTimeout(() => { if (!this.book) return; kv.set('pos.' + this.book.id, strip.anchorAt(this.cur)); kv.set('far.' + this.book.id, this.furthest); }, 400);
     if (embedded) embedMoved(strip.frac(k), k >= strip.N - 1);
-    // controls in leaves are reachable only while their leaf is in focus
-    for (const [c, el] of this.surface.rendered()) for (const x of el.querySelectorAll<HTMLElement>('textarea, button, a[href]')) x.tabIndex = focus.includes(c) ? 0 : -1;
+    // controls in leaves are reachable only while their leaf is in focus, and a screen
+    // reader hears a leaf only then; the text in view it hears as a document (spoken.ts)
+    for (const [c, el] of this.surface.rendered()) {
+      for (const x of el.querySelectorAll<HTMLElement>('textarea, button, a[href]')) x.tabIndex = focus.includes(c) ? 0 : -1;
+      if (el.classList.contains('leafcol')) el.setAttribute('aria-hidden', String(!focus.includes(c)));
+    }
+    const said = this.stage.querySelector('.spoken');
+    if (said) said.innerHTML = spokenPage(strip, focus);
     if (!quiet && document.activeElement?.closest?.('.leaf') && !focus.some(c => this.surface.columnEl(c)?.contains(document.activeElement))) this.stage.focus({ preventScroll: true });
     if (this.pick) this.pickSet(0);
   }
@@ -819,6 +869,16 @@ export class Reader {
   }
 
   recolor(id: string, color: number) { this.ann!.update(id, { color }); this.refreshAnn(id); }
+  /** A reaction (D6) on a highlight, or on a selection (highlighted for it); the same one
+   *  again takes it off. */
+  react(on: { ann?: string | null; sel?: Sel | null }, r: Reaction): string | null {
+    const id = on.ann ?? (on.sel ? this.highlight(on.sel, 1) : null);
+    if (!id) return null;
+    const a = this.ann!.list.find(x => x.id === id);
+    this.ann!.update(id, { react: a?.react === r ? undefined : r });
+    this.refreshAnn(id);
+    return id;
+  }
   setNote(id: string, note: string) {
     this.ann!.update(id, { note }); this.refreshAnn(id);
     if (note) hint('sidenotes', 'A dot beside the line marks your note: point at it to read it, or press ; for every note in view.');

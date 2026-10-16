@@ -2,6 +2,8 @@
   import { copyText } from './clipboard';
   import { ui, toast, type Reader } from '../reader/reader.svelte';
   import { chapName } from '../reader/render';
+  import { REACTIONS, REACTION_LABEL, type Reaction } from '../reader/annotations';
+  import { kv } from '../core/kv';
 
   let { reader }: { reader: Reader } = $props();
   const ann = $derived(ui.chip?.ann ? reader.ann?.list.find(a => a.id === ui.chip!.ann) ?? null : null);
@@ -27,11 +29,22 @@
     ui.chip = null;
   }
   function remove() { if (ui.chip?.ann) reader.unhighlight(ui.chip.ann); ui.chip = null; }
+  // a manuscript sent by link: the reader's quick reactions for its writer (D6)
+  // (looked up each time the chip opens: the link's record is not reactive)
+  const asked = $derived(!!ui.chip && !!reader.book && !!kv.get('joined.' + reader.book.id, null));
+  function react(r: Reaction) {
+    const chip = ui.chip; if (!chip) return;
+    const id = reader.react(chip, r);
+    ui.chip = null;
+    const a = id ? reader.ann?.list.find(x => x.id === id) : null;
+    if (a) toast(a.react ? `${REACTION_LABEL[r]}: noted for the writer.` : 'Reaction taken off.', 2400);
+  }
 
   /** Keys while the chip is up. */
   export function key(e: KeyboardEvent): boolean {
     const k = e.key;
     if (k >= '1' && k <= '4') { color(+k); return true; }
+    if (asked && k >= '5' && k <= '8') { react(REACTIONS[+k - 5]); return true; }
     if (k === 'n' || k === 'N') { note(); return true; }
     if (k === 'c' || k === 'C') { copy(); return true; }
     if ((k === 'x' || k === 'Delete' || k === 'Backspace') && ui.chip?.ann) { remove(); return true; }
@@ -66,6 +79,13 @@
     <button class="act" onclick={note}>{ann?.note ? 'Edit note' : 'Note'} <kbd>N</kbd></button>
     <button class="act" onclick={copy}>Copy <kbd>C</kbd></button>
     {#if c.ann}<button class="act" onclick={remove}>Remove <kbd>X</kbd></button>{/if}
+    {#if asked}
+      <div class="reacts" role="group" aria-label="Tell the writer">
+        {#each REACTIONS as r, i}
+          <button class="act" aria-pressed={ann?.react === r} onclick={() => react(r)} title={REACTION_LABEL[r]}>{r[0].toUpperCase() + r.slice(1)} <kbd>{i + 5}</kbd></button>
+        {/each}
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -75,8 +95,11 @@
     position: absolute; z-index: 20; transform: translate(calc(-50% + var(--dx, 0px)), calc(-100% - 18px));
     display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: var(--r-m);
     background: var(--sheet); border: 1px solid var(--rule);
-    animation: pop .16s cubic-bezier(.2,.8,.2,1);
+    animation: pop .16s cubic-bezier(.2,.8,.2,1); flex-wrap: wrap;
   }
+  /* the reactions for a manuscript's writer (D6): a row of their own */
+  .reacts { flex-basis: 100%; display: flex; justify-content: space-between; gap: 2px; border-top: 1px solid var(--rule); padding-top: 4px; margin-top: 2px; }
+  .reacts .act[aria-pressed="true"] { background: var(--hover); }
   .chip-pop.below { transform: translate(calc(-50% + var(--dx, 0px)), 26px); }
   @keyframes pop { from { opacity: 0; } }
   /* a phone: a bar along the bottom, clear of the finger and of the screen's edges */

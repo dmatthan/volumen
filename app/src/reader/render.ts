@@ -103,6 +103,22 @@ function noteDots(anns: Annotation[] | undefined, s: number, e: number, top: num
   return out;
 }
 
+/** Scripts written right to left. */
+const RTL = /[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}\p{Script=Adlam}\p{Script=Samaritan}\p{Script=Mandaic}]/u;
+const rtlOf = new WeakMap<object, boolean>();
+/** A paragraph written right to left (Hebrew, Arabic): told by its first letter, as
+ *  HTML's dir="auto" tells it. Its lines are set from the column's right edge, the
+ *  indent there too; the press's lines are the same either way. */
+export function rtl(b: { t: string }): boolean {
+  let v = rtlOf.get(b);
+  if (v === undefined) {
+    const first = /\p{L}/u.exec(b.t);
+    v = !!first && RTL.test(first[0]);
+    rtlOf.set(b, v);
+  }
+  return v;
+}
+
 /** The optical size the press measures a size at (shape.rs `opsz`). */
 const opsz = (px: number) => Math.min(144, Math.max(6, px));
 
@@ -164,8 +180,9 @@ export function columnHTML(strip: Strip, k: number, M: Metrics, marks: Set<strin
     // styles the press adds by kind (fill.rs): signatures in small caps
     if (b.k === BlockKind.Sign) cls += ' sc2';
     if (marks.has(b.key)) cls += ' mk';
+    const left = rtl(b) ? (cls += ' rtl', M.colW - x - avail) : x;
     // an indented line knows its indent, so a mark's bar and wash start at the column's edge
-    let style = `top:${top}px;left:${x.toFixed(2)}px;width:${avail.toFixed(2)}px${x > 0 ? `;--x:${x.toFixed(2)}px` : ''}`;
+    let style = `top:${top}px;left:${left.toFixed(2)}px;width:${avail.toFixed(2)}px${x > 0 ? `;--x:${x.toFixed(2)}px` : ''}`;
     // a table set smaller: its size, and optical sizes to match (as the press measures)
     const sized = flags & Flag.Sized ? spaces / 16 : 0;
     if (sized) style += `;font-size:${sized}px;--opsz:${opsz(sized)};--opsz-s:${opsz(sized * 0.7)};--opsz-sc:${opsz(sized * 0.78)}`;

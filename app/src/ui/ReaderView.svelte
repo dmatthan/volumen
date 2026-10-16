@@ -91,6 +91,7 @@
   </header>
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="stage" bind:this={stage} tabindex="0" role="region" aria-label="Book text. Space turns the page, arrow keys move one column. Press ? for all keys.">
+    <div class="spoken" aria-live="polite"></div>
     <div class="track" bind:this={track}></div>
     <div class="veil l"></div>
     <div class="veil r"></div>

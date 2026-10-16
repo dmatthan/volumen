@@ -10,14 +10,21 @@
    *  then attached to an email or a message). The name goes with them. */
   let { reader }: { reader: Reader } = $props();
   let name = $state(me().name);
-  const file = $derived.by(() => { name; return reader.myNotes(); });
+  // whether how far they read goes too (D7): yes unless they say not
+  // svelte-ignore state_referenced_locally
+  let far = $state(kv.get('progress.' + reader.book!.id, true));
+  const file = $derived.by(() => { name; far; return reader.myNotes(); });
+  function setFar() { kv.set('progress.' + reader.book!.id, far); }
   const count = (k: string) => file.notes.filter(n => n.kind === k).length;
   const parts = $derived([
     [count('highlight'), 'highlight', 'highlights'],
     [file.notes.filter(n => n.kind === 'highlight' && n.note).length, 'with a note', 'with notes'],
     [count('mark'), 'marked paragraph', 'marked paragraphs'],
-  ].filter(p => +p[0] > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`));
+  ].filter(p => +p[0] > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`).concat(file.progress ? [file.progress.done ? 'that you finished it' : `how far you have read (${Math.round(file.progress.furthest * 100)}%)`] : []));
+  /** Something to send: notes, or how far they read. */
+  const some = $derived(file.notes.length > 0 || !!file.progress);
 
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
   function close() { ui.sheet = null; }
 
   // a book that came by link through the service: the notes go back the same way
@@ -80,30 +87,34 @@
     <p class="eyebrow">Send my notes</p>
     <h2>{reader.book?.title}</h2>
     {#if online}
-      <p class="where">{parts.length ? parts.join(', ') + '.' : 'Nothing to send yet.'} They go to the writer, sealed: only they can read them. Sending again replaces what you sent{sentBefore ? ` (last on ${sentBefore})` : ''}.</p>
+      <p class="where">{parts.length ? cap(parts.join(', ')) + '.' : 'Nothing to send yet.'} They go to the writer, sealed: only they can read them. Sending again replaces what you sent{sentBefore ? ` (last on ${sentBefore})` : ''}.</p>
     {:else}
-      <p class="where">{parts.length ? parts.join(', ') + '.' : 'Nothing to send yet.'} They go as one small file, which the writer opens in their library; their book shows your notes in place.</p>
+      <p class="where">{parts.length ? cap(parts.join(', ')) + '.' : 'Nothing to send yet.'} They go as one small file, which the writer opens in their library; their book shows your notes in place.</p>
     {/if}
   </div>
   <label class="name">
     <span>Your name, as the writer will see it</span>
     <input type="text" bind:value={name} placeholder="Your name" data-autofocus onkeydown={e => { if (e.key === 'Enter') { e.preventDefault(); online ? sendBack() : send(); } }} />
   </label>
+  <label class="tog">
+    <span><span class="t-t">Send how far I have read</span><span class="t-m">Where you are and the furthest you have read, with your notes.</span></span>
+    <input type="checkbox" bind:checked={far} onchange={setFar} />
+  </label>
   {#if online}
     <label class="tog">
-      <span><span class="t-t">Send new notes by themselves</span><span class="t-m">When you leave the book, if you added any.</span></span>
+      <span><span class="t-t">Send new notes by themselves</span><span class="t-m">When you leave the book, if you added any or read on.</span></span>
       <input type="checkbox" bind:checked={auto} onchange={setAuto} />
     </label>
     <div class="check" bind:this={check}></div>
     {#if why}<p class="why" role="alert">{why}</p>{/if}
     <div class="acts two">
-      <button class="btn" onclick={send} disabled={!name.trim() || !file.notes.length}>Save as a file</button>
-      <button class="btn primary" disabled={busy || !name.trim() || !file.notes.length} onclick={sendBack}>{busy ? 'Sending…' : 'Send to the writer'} <kbd>Enter</kbd></button>
+      <button class="btn" onclick={send} disabled={!name.trim() || !some}>Save as a file</button>
+      <button class="btn primary" disabled={busy || !name.trim() || !some} onclick={sendBack}>{busy ? 'Sending…' : 'Send to the writer'} <kbd>Enter</kbd></button>
     </div>
   {:else}
     <div class="acts two">
       <button class="btn" onclick={close}>Not now <kbd>Esc</kbd></button>
-      <button class="btn primary" disabled={!name.trim() || !file.notes.length} onclick={send}>{canShare ? 'Send…' : 'Save the file'} <kbd>Enter</kbd></button>
+      <button class="btn primary" disabled={!name.trim() || !some} onclick={send}>{canShare ? 'Send…' : 'Save the file'} <kbd>Enter</kbd></button>
     </div>
   {/if}
 </Sheet>

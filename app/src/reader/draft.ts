@@ -82,6 +82,9 @@ export async function carryOver(core: Core, from: LibEntry, to: LibEntry): Promi
   // a reader's book from a link: the link goes with the new draft
   const joined = kv.get('joined.' + from.id, null);
   if (joined && !kv.get('joined.' + to.id, null)) { kv.set('joined.' + to.id, joined); kv.set('joined.' + from.id, null); }
+  // and the reader's word on sending how far they read
+  const far = kv.get<boolean | null>('progress.' + from.id, null);
+  if (far !== null) kv.set('progress.' + to.id, far);
 
   core.idle?.();
   return {
@@ -108,5 +111,5 @@ export async function takeNewDraft(core: Core, old: LibEntry, version: number): 
 
 /** What is kept about a book that is gone from the library (as Library's remove). */
 export function forgetState(id: string) {
-  for (const k of ['pos.', 'marks.', 'seen.', 'lines.', 'session.', 'state.', 'opened.', 'nb.', 'joined.', 'welcomed.']) kv.del(k + id);
+  for (const k of ['pos.', 'marks.', 'seen.', 'far.', 'progress.', 'lines.', 'session.', 'state.', 'opened.', 'nb.', 'joined.', 'welcomed.']) kv.del(k + id);
 }
