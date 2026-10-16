@@ -108,16 +108,21 @@ html, body { overflow: hidden; overscroll-behavior: none; }
    finger may only scroll, anywhere; what takes pinches (the page, the map) says so. */
 html { touch-action: pan-x pan-y; }
 /* The colour around the page (behind a phone's status bar and toolbar): the surface in
-   view (ui/edges.ts), changing with it. */
+   view (core/edges.ts), changing with it. */
 html, body, .edge-strip { background-color: var(--ground); }
 /* (it fades only where it is seen, around a phone's page: elsewhere the app covers it;
-   the colour and the fade's length are set on the elements: ui/edges.ts) */
+   the colour and the fade's length are set on the elements: core/edges.ts) */
 html.touchui, .touchui body, .touchui .edge-strip { transition-property: background-color; transition-timing-function: ease; }
-/* (Safari only, ui/edges.ts: read for its bars' colour though never seen; above all, so
-   nothing is layered differently for them) */
-.edge-strip { position: fixed; left: 0; right: 0; height: 12px; z-index: 2147483647; visibility: hidden; pointer-events: none; }
-.edge-strip.top { top: 0; }
-.edge-strip.bottom { bottom: 0; }
+/* (Safari only, core/edges.ts: read for its bars' colour.) The top one is seen, filling the
+   band under the status bar where the page runs under it (a Safari tab): Safari finds it by
+   a hit test 4 px below the top edge, which passes over hidden boxes, and then fills the
+   band with its colour instead of blurring what is there. (The installed app's blur is
+   another matter: it sits below the status bar, index.html.) Above the page and its bar,
+   below sheets and the lightbox. The bottom one stays hidden: things scroll there in the
+   library. */
+.edge-strip { position: fixed; left: 0; right: 0; pointer-events: none; }
+.edge-strip.top { top: 0; height: env(safe-area-inset-top); z-index: 40; }
+.edge-strip.bottom { bottom: 0; height: 12px; z-index: 2147483647; visibility: hidden; }
 /* Raised things cast their shadow from a pre-blurred image (assets/ui/shadow-*.png, drawn as
    a 9-slice): WebKitGTK re-blurs a box-shadow every frame anything near it repaints, which
    held a scrolling sheet at 25 fps. The image's middle is cut out, so it may sit above the

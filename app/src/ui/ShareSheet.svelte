@@ -1,13 +1,14 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import Sheet from './Sheet.svelte';
-  import { copyText } from './clipboard';
-  import { toast, ui } from '../reader/reader.svelte';
+  import { copyText } from '../core/clipboard';
+  import { toast, ui } from '../state.svelte';
   import { shell } from '../core/shell';
   import { canSeal, seal, linkFor, serviceLink } from '../core/share';
-  import { service, signIn, signOut, publish, renew, withdraw, sharedOf, myShares, collectNotes, canPasskey, personToken, syncShares, hasVault, unlockVault, sendDraft, type ServiceConfig, type Shared } from '../core/service';
+  import { service, signIn, signOut, publish, renew, withdraw, sharedOf, myShares, canPasskey, personToken, syncShares, hasVault, unlockVault, sendDraft, type ServiceConfig, type Shared } from '../core/service';
+  import { collectNotes } from '../reader/intake';
   import type { Core, LibEntry } from '../core/types';
-  import { me } from '../reader/feedback';
+  import { me } from '../core/identity';
 
   /** Shares a book as a link (core/share.ts): the book sealed with a key of its own, which
    *  only the link holds. With the service (this app served from the web, service/), a

@@ -291,7 +291,7 @@ mod tests {
 }
 
 thread_local! {
-    /// The cascade of the document being read (set per spine document by `epub.rs`).
+    /// The cascade of the document being read (set per spine document by `epub/`).
     static NOW: std::cell::RefCell<HashMap<NodeId, Props>> = std::cell::RefCell::new(HashMap::new());
 }
 

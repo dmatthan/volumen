@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { count } from '../core/say';
   import Sheet from './Sheet.svelte';
-  import { ui, toast, type Reader } from '../reader/reader.svelte';
-  import { takeNewDraft, forgetState } from '../reader/draft';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
+  import { takeNewDraft } from '../reader/draft';
+  import { removeBook } from './library';
 
   /** The writer has sent a newer draft to the link this book came by (D8): read it, with
    *  this reader's notes carried over, or later. Asked when the book opens, never while
@@ -19,12 +22,10 @@
       const { entry, carried } = await takeNewDraft(reader.core, old, version);
       ui.sheet = null; ui.newDraft = null;
       reader.close();
-      await reader.core.remove(old.id);
-      forgetState(old.id);
+      await removeBook(reader.core, old.id);
       ui.libVersion++;
       await reader.open(entry.id);
-      const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
-      toast(`The new draft. ${carried.mine ? `${n(carried.mine, 'note of yours', 'notes of yours')} carried over${carried.mineLost ? `; ${carried.mineLost} on words no longer there, kept in your notebook` : ''}.` : ''}`, 6000);
+      toast(`The new draft. ${carried.mine ? `${count(carried.mine, 'note of yours', 'notes of yours')} carried over${carried.mineLost ? `; ${carried.mineLost} on words no longer there, kept in your notebook` : ''}.` : ''}`, 6000);
     } catch (e) { toast(`The new draft could not be opened: ${(e as Error).message}`, 6000); busy = false; }
   }
 </script>

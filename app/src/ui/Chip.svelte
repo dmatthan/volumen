@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { copyText } from './clipboard';
-  import { ui, toast, type Reader } from '../reader/reader.svelte';
+  import { copyText } from '../core/clipboard';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
   import { chapName } from '../reader/render';
   import { REACTIONS, REACTION_LABEL, type Reaction } from '../reader/annotations';
   import { kv } from '../core/kv';

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Reader } from '../reader/reader.svelte';
-  import { ui } from '../reader/reader.svelte';
+  import { ui } from '../state.svelte';
   import { fold } from '../reader/notebook';
   import { REACTION_LABEL } from '../reader/annotations';
 

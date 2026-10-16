@@ -1,6 +1,7 @@
 import type { BookData, Core, LibEntry, NoteAnchor } from '../core/types';
 import { IMPORTER_VERSION } from '../core/types';
 import { kv } from '../core/kv';
+import { keyIndexOf, type KeyIndex } from '../core/book';
 import { Annotations } from './annotations';
 import { notebookOf, saveDigest } from './notebook';
 
@@ -23,6 +24,33 @@ export function anchorAt(book: BookData, key: string, off: number): NoteAnchor |
   return null;
 }
 
+type Place = { key?: string; off?: number };
+
+/** A place and marked paragraphs in `old` (an earlier reading or draft of a book), found
+ *  again by their words in the book now kept as `to`; those not found are left out. */
+export async function placeAgain(core: Core, old: BookData, to: string, pos: Place | null, marks: string[]): Promise<{ pos?: { key: string; off: number }; marks: string[] }> {
+  const anchors: NoteAnchor[] = [], what: ('pos' | 'mark')[] = [];
+  if (pos?.key) { const a = anchorAt(old, pos.key, pos.off ?? 0); if (a) { anchors.push(a); what.push('pos'); } }
+  for (const k of marks) { const a = anchorAt(old, k, 0); if (a) { anchors.push(a); what.push('mark'); } }
+  const out: { pos?: { key: string; off: number }; marks: string[] } = { marks: [] };
+  if (!anchors.length) return out;
+  (await core.place(to, anchors)).forEach((p, i) => {
+    if (!p || p.how === 'lost') return;
+    if (what[i] === 'pos') out.pos = { key: p.key, off: p.s };
+    else out.marks.push(p.key);
+  });
+  return out;
+}
+
+/** One's own highlights placed on a book's words as they are now, and the library's copy
+ *  of its notebook made again. */
+export async function placeOwnNotes(core: Core, book: BookData, keyIndex: KeyIndex = keyIndexOf(book)): Promise<Annotations> {
+  const ann = new Annotations(book, keyIndex);
+  await ann.place(core);
+  saveDigest(book, notebookOf(book, keyIndex, ann.list, kv.get<string[]>('marks.' + book.id, [])));
+  return ann;
+}
+
 /** Reads a book again from its kept file with the importer as it is now (a later one sets
  *  more of what the publisher made: rich blocks, the publisher's styles). The reader's
  *  place and marked paragraphs go with it, found again by their words; highlights find
@@ -30,29 +58,11 @@ export function anchorAt(book: BookData, key: string, off: number): NoteAnchor |
 export async function reread(core: Core, e: LibEntry): Promise<LibEntry> {
   const id = e.id;
   const old = await core.open(id);
-  const pos = kv.get<{ key?: string; off?: number } | null>('pos.' + id, null);
   const marks = kv.get<string[]>('marks.' + id, []);
-  const anchors: NoteAnchor[] = [];
-  const what: ('pos' | 'mark')[] = [];
-  if (pos?.key) { const a = anchorAt(old, pos.key, pos.off ?? 0); if (a) { anchors.push(a); what.push('pos'); } }
-  for (const k of marks) { const a = anchorAt(old, k, 0); if (a) { anchors.push(a); what.push('mark'); } }
   const fresh = await core.reimport(id);
-  const book = await core.open(id);
-  if (anchors.length) {
-    const placed = await core.place(id, anchors);
-    const nextMarks: string[] = [];
-    placed.forEach((p, i) => {
-      if (!p || p.how === 'lost') return;
-      if (what[i] === 'pos') kv.set('pos.' + id, { key: p.key, off: p.s });
-      else nextMarks.push(p.key);
-    });
-    if (marks.length) kv.set('marks.' + id, nextMarks);
-  }
-  // highlights on their words now, and the notebook the library shows
-  const keyIndex = new Map<string, [number, number]>();
-  book.sections.forEach((s, si) => s.blocks.forEach((b, bi) => keyIndex.set(b.key, [si, bi])));
-  const ann = new Annotations(book, keyIndex);
-  await ann.place(core);
-  saveDigest(book, notebookOf(book, keyIndex, ann.list, kv.get<string[]>('marks.' + id, [])));
+  const r = await placeAgain(core, old, id, kv.get<Place | null>('pos.' + id, null), marks);
+  if (r.pos) kv.set('pos.' + id, r.pos);
+  if (marks.length) kv.set('marks.' + id, r.marks);
+  await placeOwnNotes(core, await core.open(id));
   return fresh;
 }

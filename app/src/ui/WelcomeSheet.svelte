@@ -1,6 +1,7 @@
 <script lang="ts">
   import Sheet from './Sheet.svelte';
-  import { ui, type Reader } from '../reader/reader.svelte';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui } from '../state.svelte';
   import { kv } from '../core/kv';
 
   /** A book that arrived by link, opened for the first time: who sent it, and the two

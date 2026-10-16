@@ -253,11 +253,10 @@ impl Walk<'_> {
                         b"t" if !empty => in_text = true,
                         b"tab" if !in_ppr => self.push(&mut b, " ", &pstyle, &rstyle, direct, deleted, field_code),
                         b"br" | b"cr" => {
-                            if !matches!(attr(e, b"type").as_deref(), Some("page") | Some("column")) && deleted == 0 {
-                                if let Some(b) = b.as_mut() {
+                            if !matches!(attr(e, b"type").as_deref(), Some("page") | Some("column")) && deleted == 0
+                                && let Some(b) = b.as_mut() {
                                     b.newline();
                                 }
-                            }
                         }
                         b"noBreakHyphen" => self.push(&mut b, "\u{2011}", &pstyle, &rstyle, direct, deleted, field_code),
                         b"footnoteReference" | b"endnoteReference" if deleted == 0 => {
@@ -279,7 +278,7 @@ impl Walk<'_> {
                 }
                 Ok(Event::GeneralRef(g)) if in_text && deleted == 0 && !field_code => {
                     // an entity in the text (&amp; and friends)
-                    let name: &[u8] = &g;
+                    let name: &[u8] = g;
                     let s = match name {
                         b"amp" => "&",
                         b"lt" => "<",

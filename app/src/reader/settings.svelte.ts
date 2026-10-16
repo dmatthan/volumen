@@ -22,24 +22,7 @@ export const SIZES = [15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28];
 export const DEFAULTS: Settings = { size: null, layout: 'auto', view: 'flow', theme: 'original', appearance: 'auto', veil: true, motion: 'system' };
 
 /** Settings are stored as the changes from DEFAULTS, so "reset" is deleting them. */
-const stored = kv.get<Record<string, unknown>>('settings', {});
-// before themes, `theme` held the appearance and `justify` was global
-if (stored.theme === 'auto' || stored.theme === 'light' || stored.theme === 'dark') { stored.appearance = stored.theme; delete stored.theme; }
-if (stored.justify === false) {
-  const o = kv.get<Record<string, Record<string, unknown>>>('themeOpts', {});
-  kv.set('themeOpts', { ...o, original: { ...o.original, justify: false } });
-}
-delete stored.justify;
-// hyphenation moved into the themes too
-if (stored.hyphenate === false) {
-  const o = kv.get<Record<string, Record<string, unknown>>>('themeOpts', {});
-  for (const id of ['original', 'quiet', 'paper', 'bold', 'calm', 'focus']) o[id] = { ...o[id], hyphenate: false };
-  kv.set('themeOpts', o);
-}
-delete stored.hyphenate;
-// settings that are no more (a line at each chapter's end)
-delete stored.recall;
-export const settings: Settings = $state({ ...DEFAULTS, ...(stored as Partial<Settings>) });
+export const settings: Settings = $state({ ...DEFAULTS, ...kv.get<Partial<Settings>>('settings', {}) });
 
 export function save() {
   const diff: Partial<Settings> = {};

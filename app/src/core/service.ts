@@ -7,9 +7,10 @@
  *  cannot read. */
 import { isTauri } from './shell';
 import { kv } from './kv';
-import { seal, unseal, postToken, sealNotes, unsealNotes, readerId, serviceLink } from './share';
+import { seal, unseal, postToken, sealNotes, unsealNotes, readerId, serviceLink, b64url, unb64url } from './share';
 import type { Core } from './types';
-import { parseNotes, receive, me, type NotesFile } from '../reader/feedback';
+import { me } from './identity';
+import type { NotesFile } from '../reader/feedback';
 
 export interface ServiceConfig { v: 1; turnstile: string | null; writer: { name: string } | null }
 
@@ -47,8 +48,6 @@ async function call<T = unknown>(method: string, path: string, body?: Uint8Array
 
 /* ---------- passkeys (WebAuthn), with the JSON the server speaks ---------- */
 
-const b64url = (b: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-const unb64url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4)), c => c.charCodeAt(0));
 
 type PKC = typeof PublicKeyCredential & {
   parseCreationOptionsFromJSON?: (o: unknown) => PublicKeyCredentialCreationOptions;
@@ -297,9 +296,9 @@ export async function withdraw(bookId: string) {
   kv.set('share.' + bookId, null);
 }
 
-/** Readers' notes that arrived since last asked, taken in as feedback on their books
- *  (as a notes file would be). What came, per book. */
-export async function collectNotes(): Promise<{ book: string; from: string; notes: number }[]> {
+/** Readers' notes that arrived since last asked, unsealed: the book here each is for, and
+ *  its text (taken in by reader/intake.ts). Asked once each: a damaged one is not again. */
+export async function fetchNotes(): Promise<{ book: string; text: string }[]> {
   const c = await service();
   if (!c?.writer) return [];
   const books = new Map<string, [string, Shared]>();
@@ -310,20 +309,15 @@ export async function collectNotes(): Promise<{ book: string; from: string; note
   if (!books.size) return [];
   const { notes } = await call<{ notes: { book: string; reader: string; updated: number }[] }>('GET', '/api/inbox');
   const seen = kv.get<Record<string, number>>('inbox.seen', {});
-  const out: { book: string; from: string; notes: number }[] = [];
+  const out: { book: string; text: string }[] = [];
   for (const n of notes) {
     const tag = `${n.book}/${n.reader}`;
     const b = books.get(n.book);
     if (!b || (seen[tag] ?? 0) >= n.updated) continue;
     const sealed = new Uint8Array(await call<ArrayBuffer>('GET', `/api/shares/${n.book}/notes/${n.reader}`));
     const text = await unsealNotes(sealed, b[1].key);
-    const files = text ? parseNotes(text) : 'damaged';
     seen[tag] = n.updated;
-    if (typeof files === 'string') continue;
-    for (const f of files) {
-      receive({ ...f, book: { ...f.book, id: b[0] } }, b[0]);
-      out.push({ book: b[0], from: f.from.name || 'A reader', notes: f.notes.length });
-    }
+    if (text) out.push({ book: b[0], text });
   }
   kv.set('inbox.seen', seen);
   return out;

@@ -21,8 +21,6 @@ export function embedOptions(): EmbedOptions {
   return { src: url(q.get('src')), chapters: chapters && chapters[0] >= 1 && chapters[1] >= chapters[0] ? chapters : undefined, theme: q.get('theme') ?? undefined, endHref: url(q.get('end')) ?? undefined, endLabel: q.get('endl')?.slice(0, 60) || undefined, remember: q.get('rem') === '1' };
 }
 export const embedOpts = embedded ? embedOptions() : { src: null, remember: false } as EmbedOptions;
-/** (kept for the address form the hosted page has always taken) */
-export const embedSource = () => embedOpts.src;
 
 /** Where the reader is, and the end, told to the page around the frame (volumen.js turns
  *  them into events): a fraction of the book, a moment after it changes. */

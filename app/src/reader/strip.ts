@@ -1,4 +1,5 @@
 import type { BookData } from '../core/types';
+import { keyIndexOf, type KeyIndex } from '../core/book';
 
 /** Line table fields, matching vol_press::encode. */
 export const F = { col: 0, row: 1, block: 2, s: 3, e: 4, flags: 5, x: 6, avail: 7, natural: 8 } as const;
@@ -62,12 +63,12 @@ export class Strip {
   secStart: number[] = [];
   secEnd: number[] = [];
   layouts = new Map<number, SecLayout>();
-  keyIndex = new Map<string, [number, number]>();
+  keyIndex: KeyIndex;
   /** Columns per section that has not been laid out yet. */
   private wordsPerCol = 250;
 
   constructor(public book: BookData) {
-    book.sections.forEach((s, si) => s.blocks.forEach((b, bi) => this.keyIndex.set(b.key, [si, bi])));
+    this.keyIndex = keyIndexOf(book);
   }
 
   setEstimate(rows: number, measure: number, fs: number) {

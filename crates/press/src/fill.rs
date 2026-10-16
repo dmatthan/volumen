@@ -175,7 +175,7 @@ fn set_paras(m: &mut Measurer, mono: &mut Mono, sec: &Section, images: &[Image],
                         }
                         let mut next = stop;
                         if stop < end {
-                            if let Some(sp) = b.text[start..=stop].rfind(' ').map(|i| start + i).filter(|&i| b.text[start..i].trim_start().len() > 0) {
+                            if let Some(sp) = b.text[start..=stop].rfind(' ').map(|i| start + i).filter(|&i| !b.text[start..i].trim_start().is_empty()) {
                                 stop = b.text[start..sp].trim_end_matches(' ').len() + start;
                                 next = sp;
                             }
@@ -293,15 +293,13 @@ fn set_paras(m: &mut Measurer, mono: &mut Mono, sec: &Section, images: &[Image],
             }
         }
         // attribution belongs with its verse: move the verse's space after past it
-        if b.kind == Kind::Attrib {
-            if let Some(prev) = out.last_mut() {
-                if prev.space_after > 0 {
+        if b.kind == Kind::Attrib
+            && let Some(prev) = out.last_mut()
+                && prev.space_after > 0 {
                     para.space_after = prev.space_after;
                     prev.space_after = 0;
                     prev.keep_with_next = true;
                 }
-            }
-        }
         if !para.lines.is_empty() {
             out.push(para);
         }

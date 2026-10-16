@@ -21,6 +21,8 @@ export class Surface {
   private lazy = false;
   private lazyRaf = 0;
   private lastPos = 0;
+  /** A move the compositor is drawing (`glide`). */
+  private anim: Animation | null = null;
 
   constructor(public track: HTMLElement, private src: () => RenderSource) {}
 
@@ -35,15 +37,42 @@ export class Surface {
     return M.x0 - (pos - this.base) * M.P;
   }
 
-  /** Puts the track at `pos`; at a whole column the text lands on device pixels. `v` is
-   *  the speed in columns per second: columns ahead of the motion are built early, one per
-   *  frame, so none is built in the frame it comes into view. */
-  place(pos: number, v = 0) {
-    this.lastPos = pos;
+  /** The track's transform at `pos`; at a whole column the text lands on device pixels. */
+  private at(pos: number) {
     let x = this.x(pos);
     if (Math.abs(pos - Math.round(pos)) < 1e-4) x = Math.round(x * this.dpr) / this.dpr;
-    this.track.style.transform = `translate3d(${x.toFixed(3)}px,0,0)`;
+    return `translate3d(${x.toFixed(3)}px,0,0)`;
+  }
+
+  /** Puts the track at `pos`. `v` is the speed in columns per second: columns ahead of the
+   *  motion are built early, one per frame, so none is built in the frame it comes into
+   *  view. `glided`: the compositor has the track there already (`glide`). */
+  place(pos: number, v = 0, glided = false) {
+    this.lastPos = pos;
+    if (!glided || !this.anim) {
+      this.stop();
+      this.track.style.transform = this.at(pos);
+    }
     this.ensureVisible(pos, v);
+  }
+
+  /** Hands a move to the compositor: `at(t)`, the position `t` seconds after `t0` (a frame's
+   *  time on the document's timeline), for `T` seconds. It runs at the screen's rate, not
+   *  the page's (which Safari halves in Low Power Mode); the track rests where it ends. */
+  glide(at: (t: number) => number, T: number, t0: number) {
+    this.stop();
+    const n = Math.max(2, Math.ceil(T * 60));
+    const frames = Array.from({ length: n + 1 }, (_, i) => ({ offset: i / n, transform: this.at(at((i / n) * T)) }));
+    this.track.style.transform = frames[n].transform;
+    const a = this.anim = this.track.animate(frames, { duration: T * 1000, easing: 'linear' });
+    a.startTime = t0;
+    a.onfinish = () => { if (this.anim === a) this.anim = null; };
+  }
+
+  private stop() {
+    if (!this.anim) return;
+    this.anim.cancel();
+    this.anim = null;
   }
 
   /** Columns that can be seen at `pos` must exist now; columns ahead of the motion are
@@ -99,6 +128,7 @@ export class Surface {
   /** Keeps coordinates small: far from the base, float precision would blur text. */
   rebase(k: number) {
     if (Math.abs(k - this.base) < 16) return;
+    this.stop();
     const { M } = this.src();
     this.base = k;
     for (const [c, el] of this.cols) el.style.left = `${(c - this.base) * M.P}px`;

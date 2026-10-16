@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { ui, type Reader } from '../reader/reader.svelte';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui } from '../state.svelte';
 
   /** Your notes beside their lines, in the room outside the focus columns: the side the
    *  note's column is nearer, else the other, else over the column just below its line.

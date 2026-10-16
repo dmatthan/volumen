@@ -49,23 +49,21 @@ pub(crate) fn assemble(source: &[u8], name: &str, mut doc: Doc) -> Result<crate:
     let top = levels.iter().copied().filter(|&l| l > 0).min();
     let first_text = doc.paras.iter().position(|p| !matches!(p, Para::Heading(..)));
     let mut title_at = doc.paras.iter().position(|p| matches!(p, Para::Heading(0, _)));
-    if title_at.is_none() {
-        if let Some(t) = top {
+    if title_at.is_none()
+        && let Some(t) = top {
             let n = levels.iter().filter(|&&l| l == t).count();
             let at = doc.paras.iter().position(|p| matches!(p, Para::Heading(l, _) if *l == t));
             if n == 1 && levels.iter().any(|&l| l > t) && at.is_some_and(|a| first_text.is_none_or(|f| a < f)) {
                 title_at = at;
             }
         }
-    }
-    if let Some(i) = title_at {
-        if let Para::Heading(_, b) = doc.paras.remove(i) {
+    if let Some(i) = title_at
+        && let Para::Heading(_, b) = doc.paras.remove(i) {
             let (t, _) = b.finish();
             if doc.meta.title.trim().is_empty() {
                 doc.meta.title = t;
             }
         }
-    }
     if doc.meta.title.trim().is_empty() {
         let stem = name.rsplit(['/', '\\']).next().unwrap_or(name);
         let stem = stem.rsplit_once('.').map(|x| x.0).unwrap_or(stem);
@@ -97,8 +95,8 @@ pub(crate) fn assemble(source: &[u8], name: &str, mut doc: Doc) -> Result<crate:
     };
     let mut sections: Vec<Section> = Vec::new();
     for p in doc.paras {
-        if let Para::Heading(l, b) = &p {
-            if Some(*l) == chap {
+        if let Para::Heading(l, b) = &p
+            && Some(*l) == chap {
                 let (t, _) = b.clone().finish();
                 let h = heads::parse(&t);
                 let n = sections.iter().filter(|s| s.kind == SectionKind::Chapter).count() + 1;
@@ -106,7 +104,6 @@ pub(crate) fn assemble(source: &[u8], name: &str, mut doc: Doc) -> Result<crate:
                 sections.push(Section { kind: SectionKind::Chapter, part: String::new(), label, num: if h.num.is_empty() { n.to_string() } else { h.num }, title, blocks: Vec::new() });
                 continue;
             }
-        }
         if sections.is_empty() {
             // text before the first chapter: an opening section of its own
             sections.push(Section { kind: if chap.is_some() { SectionKind::Front } else { SectionKind::Chapter }, part: String::new(), label: String::new(), num: "1".into(), title: String::new(), blocks: Vec::new() });
@@ -154,11 +151,10 @@ pub(crate) fn assemble(source: &[u8], name: &str, mut doc: Doc) -> Result<crate:
         return Err(Error::Empty);
     }
     for s in &mut sections {
-        if s.kind == SectionKind::Chapter {
-            if let Some(b) = s.blocks.iter_mut().find(|b| b.kind == Kind::P) {
+        if s.kind == SectionKind::Chapter
+            && let Some(b) = s.blocks.iter_mut().find(|b| b.kind == Kind::P) {
                 vol_model::apply_lead_in(b);
             }
-        }
     }
     let notes = doc
         .notes

@@ -4,12 +4,12 @@
  *  anchor.rs): one's own highlights, marks and place; readers' feedback, each reader's
  *  newer set winning; what the writer decided about passages; the share, so notes from
  *  readers still on the earlier draft arrive on this one. */
-import type { BookData, Core, LibEntry } from '../core/types';
+import type { Core, LibEntry } from '../core/types';
+import { keyIndexOf } from '../core/book';
 import { kv } from '../core/kv';
-import { Annotations, type Annotation } from './annotations';
+import type { Annotation } from './annotations';
 import { Feedback } from './feedback';
-import { notebookOf, saveDigest } from './notebook';
-import { anchorAt } from './reread';
+import { placeAgain, placeOwnNotes } from './reread';
 import { joinedOf, fetchSealed } from '../core/service';
 import { unseal } from '../core/share';
 
@@ -29,41 +29,21 @@ export function earlierDraft(added: LibEntry, library: LibEntry[]): LibEntry | n
 
 export interface Carried { mine: number; mineLost: number; readers: number; theirs: number; theirsLost: number; shared: boolean }
 
-const indexOf = (book: BookData) => {
-  const m = new Map<string, [number, number]>();
-  book.sections.forEach((s, si) => s.blocks.forEach((b, bi) => m.set(b.key, [si, bi])));
-  return m;
-};
-
 export async function carryOver(core: Core, from: LibEntry, to: LibEntry): Promise<Carried> {
   const old = await core.open(from.id);
   const book = await core.open(to.id);
-  const keyIndex = indexOf(book);
+  const keyIndex = keyIndexOf(book);
+
+  // the place (unless the new draft has one) and marked paragraphs, by their words
+  const found = await placeAgain(core, old, to.id, kv.get('pos.' + to.id, null) ? null : kv.get('pos.' + from.id, null), kv.get<string[]>('marks.' + from.id, []));
+  if (found.pos) kv.set('pos.' + to.id, found.pos);
+  kv.set('marks.' + to.id, [...new Set([...kv.get<string[]>('marks.' + to.id, []), ...found.marks])]);
 
   // one's own highlights: copied, then placed on the new words
   const had = kv.get<Annotation[]>('ann.' + to.id, []);
   const ids = new Set(had.map(a => a.id));
   kv.set('ann.' + to.id, [...had, ...kv.get<Annotation[]>('ann.' + from.id, []).filter(a => !ids.has(a.id)).map(a => ({ ...a }))]);
-  const ann = new Annotations(book, keyIndex);
-  await ann.place(core);
-
-  // the place and marked paragraphs, by their words
-  const pos = kv.get<{ key?: string; off?: number } | null>('pos.' + from.id, null);
-  const marks = kv.get<string[]>('marks.' + from.id, []);
-  const anchors = [], what: ('pos' | 'mark')[] = [];
-  if (pos?.key && !kv.get('pos.' + to.id, null)) { const a = anchorAt(old, pos.key, pos.off ?? 0); if (a) { anchors.push(a); what.push('pos'); } }
-  for (const k of marks) { const a = anchorAt(old, k, 0); if (a) { anchors.push(a); what.push('mark'); } }
-  if (anchors.length) {
-    const placed = await core.place(to.id, anchors);
-    const next = new Set(kv.get<string[]>('marks.' + to.id, []));
-    placed.forEach((p, i) => {
-      if (!p || p.how === 'lost') return;
-      if (what[i] === 'pos') kv.set('pos.' + to.id, { key: p.key, off: p.s });
-      else next.add(p.key);
-    });
-    kv.set('marks.' + to.id, [...next]);
-  }
-  saveDigest(book, notebookOf(book, keyIndex, ann.list, kv.get<string[]>('marks.' + to.id, [])));
+  const ann = await placeOwnNotes(core, book, keyIndex);
 
   // readers' feedback, and what the writer decided about it
   const fbOld = kv.get<Record<string, { sent: number }>>('fb.' + from.id, {});
@@ -107,9 +87,4 @@ export async function takeNewDraft(core: Core, old: LibEntry, version: number): 
   // a reader's welcome was for the earlier draft: not again
   kv.set('welcomed.' + entry.id, Date.now());
   return { entry, carried };
-}
-
-/** What is kept about a book that is gone from the library (as Library's remove). */
-export function forgetState(id: string) {
-  for (const k of ['pos.', 'marks.', 'seen.', 'far.', 'progress.', 'lines.', 'session.', 'state.', 'opened.', 'nb.', 'joined.', 'welcomed.']) kv.del(k + id);
 }

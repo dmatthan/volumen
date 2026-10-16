@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { copyText } from './clipboard';
+  import { copyText } from '../core/clipboard';
   import { onMount, tick } from 'svelte';
   import { touchUI } from './touch';
   import type { Reader } from '../reader/reader.svelte';
-  import { ui, toast } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
   import { settings, save, SIZES, type Settings, type Layout } from '../reader/settings.svelte';
   import { themes, allThemes, themeById, optionsOf, optionChanged, anyOptionChanged, setOption, resetOptions, resolve, loadFamily, deleteUserTheme, exportTheme, type Options, type Theme } from '../reader/themes.svelte';
   import { editor } from './editor.svelte';

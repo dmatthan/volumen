@@ -12,6 +12,11 @@
  *           sheet decelerates onto the next boundary ahead
  *   direct  a trackpad or a drag moves the sheet 1:1; on release it settles on the column
  *           nearest where the hand let go (a flick: the next one that way)
+ *
+ * A move toward a target is known whole when it starts, so it is also handed to the
+ * compositor (`glide`), which draws it at the screen's own rate however often the page
+ * gets a frame: Safari gives a page half of them in Low Power Mode, and when hot. The loop
+ * still runs, for what follows the sheet (columns built ahead, the running head).
  */
 
 /** Seconds for a one-column tap; each extra column in a set adds a little. */
@@ -68,8 +73,11 @@ export interface MotionHost {
   /** Columns a tap moves. */
   spread(): number;
   reduced(): boolean;
-  /** Called every frame the position changes. */
-  frame(p: number, v: number): void;
+  /** Called every frame the position changes; `glided` while the compositor draws the
+   *  move (else the host puts the sheet there, ending any glide). */
+  frame(p: number, v: number, glided?: boolean): void;
+  /** A move from now (`t0`, the frame's time) for `T` seconds, position at `t` seconds. */
+  glide(at: (t: number) => number, T: number, t0: number): void;
   /** Called once when the sheet comes to rest on a boundary. */
   rest(k: number): void;
 }
@@ -90,6 +98,12 @@ export class Motion {
   /** Where the sheet will come to rest if nothing else happens. */
   get target() { return this.mode === 'traj' && this.traj ? this.traj.p1 : this.mode === 'rest' ? this.p : NaN; }
 
+  /** Mid-move, the state at this frame's time: the compositor draws the move between the
+   *  loop's frames, so a new move starts from where it is, not from the last frame seen. */
+  private sync() {
+    if (this.mode === 'traj' && this.traj) [this.p, this.v, this.a] = this.traj.at(Math.max(0, (frameNow() - this.t0) / 1000));
+  }
+
   private clamp(x: number) { return Math.max(this.host.min(), Math.min(this.host.max(), x)); }
 
   /** Puts the sheet at k at once. */
@@ -101,6 +115,7 @@ export class Motion {
 
   /** Moves to `target` from the current state over `T` seconds. */
   toward(target: number, T?: number, kick = false) {
+    this.sync();
     target = this.clamp(Math.round(target));
     const h = target - this.p;
     if (this.host.reduced()) {
@@ -116,9 +131,10 @@ export class Motion {
     if (Math.abs(h) < 1e-4 && Math.abs(this.v) < 1e-3) { this.jump(target); this.host.rest(target); return; }
     // from standstill, start with some velocity: the sheet answers on the first frame
     const v0 = this.mode === 'rest' && kick ? Math.sign(h) * TAP_KICK * Math.abs(h) / T : this.v;
-    this.traj = new Quintic(this.p, v0, this.mode === 'rest' ? 0 : this.a, target, T);
+    const traj = this.traj = new Quintic(this.p, v0, this.mode === 'rest' ? 0 : this.a, target, T);
     this.t0 = frameNow();
     this.mode = 'traj';
+    this.host.glide(t => traj.at(t)[0], T, this.t0);
     this.loop();
   }
 
@@ -147,6 +163,7 @@ export class Motion {
   /** A held key or press: ease into a cruise. */
   cruise(d: number) {
     if (this.host.reduced()) return;
+    this.sync();
     this.cruiseDir = d;
     this.cruiseT0 = frameNow();
     this.mode = 'cruise';
@@ -179,6 +196,7 @@ export class Motion {
   /* ---------- direct manipulation (trackpad, drag) ---------- */
   private directFrom = 0;
   directStart() {
+    this.sync();
     this.stopLoop();
     this.traj = null;
     this.directFrom = this.p;
@@ -240,7 +258,7 @@ export class Motion {
       if (this.mode === 'traj' && this.traj) {
         const t = Math.max(0, (now - this.t0) / 1000);
         [this.p, this.v, this.a] = this.traj.at(t);
-        this.host.frame(this.p, this.v);
+        this.host.frame(this.p, this.v, true);
         if (t >= this.traj.T) {
           const k = this.traj.p1;
           this.mode = 'rest'; this.traj = null; this.v = 0; this.a = 0; this.p = k;

@@ -74,7 +74,7 @@
 </div>
 
 <style>
-  .find { position: absolute; z-index: 44; top: 10px; left: 50%; transform: translateX(-50%); width: min(600px, calc(100% - 28px)); display: grid; gap: 8px; }
+  .find { position: absolute; z-index: 44; top: calc(10px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(600px, calc(100% - 28px)); display: grid; gap: 8px; }
   .field { display: flex; align-items: center; gap: 4px; height: 44px; padding: 0 6px 0 12px; border-radius: 12px; background: var(--sheet); border: 1px solid var(--rule); color: var(--ink); }
   .mag { width: 18px; height: 18px; color: var(--ink-3); flex: none; }
   svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

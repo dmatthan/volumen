@@ -2,12 +2,17 @@
 // bridge as raw bytes.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod desktop;
+mod dev;
+mod files;
+mod fonts;
 mod store;
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::{LibEntry, Store};
 use tauri::ipc::{Request, Response};
+use fonts::{BUNDLED, SysFile};
 use tauri::{Manager, State};
 use vol_engine::{Engine, Request as LayoutRequest};
 
@@ -22,32 +27,6 @@ static PATTERNS: &[(&str, &[u8])] = &[
     ("cs", include_bytes!("../../assets/hyph/cs.bin")), ("ru", include_bytes!("../../assets/hyph/ru.bin")), ("la", include_bytes!("../../assets/hyph/la.bin")),
 ];
 
-macro_rules! fonts {
-    ($($fam:literal: $($file:literal),+;)+) => {
-        /// The families the app ships, with their files (the webview loads the same files
-        /// from /fonts).
-        static BUNDLED: &[(&str, &[&[u8]])] = &[$(($fam, &[$(include_bytes!(concat!("../../assets/fonts/", $file))),+])),+];
-    };
-}
-// each bundled face is a core file and its extension (scripts/subset-fonts.py); the
-// engine chains "Name~ext" after "Name", as the webview picks by unicode-range (fonts.css)
-fonts! {
-    "Literata": "Literata.ttf", "Literata-Italic.ttf";
-    "Literata~ext": "Literata.ext.ttf", "Literata-Italic.ext.ttf";
-    "Inter": "Inter.ttf", "Inter-Italic.ttf";
-    "Inter~ext": "Inter.ext.ttf", "Inter-Italic.ext.ttf";
-    "Newsreader": "Newsreader.ttf", "Newsreader-Italic.ttf";
-    "Newsreader~ext": "Newsreader.ext.ttf", "Newsreader-Italic.ext.ttf";
-    "Charis": "Charis-Regular.ttf", "Charis-Italic.ttf", "Charis-Medium.ttf", "Charis-MediumItalic.ttf", "Charis-SemiBold.ttf", "Charis-SemiBoldItalic.ttf", "Charis-Bold.ttf", "Charis-BoldItalic.ttf";
-    "Charis~ext": "Charis-Regular.ext.ttf", "Charis-Italic.ext.ttf", "Charis-Medium.ext.ttf", "Charis-MediumItalic.ext.ttf", "Charis-SemiBold.ext.ttf", "Charis-SemiBoldItalic.ext.ttf", "Charis-Bold.ext.ttf", "Charis-BoldItalic.ext.ttf";
-    "Fraunces": "Fraunces.ttf", "Fraunces-Italic.ttf";
-    "Fraunces~ext": "Fraunces.ext.ttf", "Fraunces-Italic.ext.ttf";
-    "Nunito Sans": "NunitoSans.ttf", "NunitoSans-Italic.ttf";
-    "Nunito Sans~ext": "NunitoSans.ext.ttf", "NunitoSans-Italic.ext.ttf";
-    "JetBrains Mono": "JetBrainsMono.ttf";
-    "JetBrains Mono~ext": "JetBrainsMono.ext.ttf";
-}
-
 struct App {
     engine: Mutex<Engine>,
     store: Mutex<Store>,
@@ -59,15 +38,6 @@ struct App {
     loaded: Mutex<std::collections::HashMap<String, Vec<SysFile>>>,
     /// A backup chosen in the picker, for the page to read once (`picked_bytes`).
     picked: Mutex<Option<Vec<u8>>>,
-}
-
-#[derive(serde::Serialize, Clone)]
-struct SysFile {
-    italic: bool,
-    wmin: f32,
-    wmax: f32,
-    #[serde(skip)]
-    bytes: std::sync::Arc<Vec<u8>>,
 }
 
 type Res<T> = Result<T, String>;
@@ -249,49 +219,6 @@ async fn reimport(id: String, app: State<'_, App>) -> Res<LibEntry> {
     guarded(|| add_as(&app, &bytes, &name, old.sample, Some(&old)))
 }
 
-/// The backup just chosen in the picker, once.
-#[tauri::command]
-async fn picked_bytes(app: State<'_, App>) -> Res<Response> {
-    Ok(Response::new(app.picked.held().take().unwrap_or_default()))
-}
-
-/// What the library's picker brought: a book (added), or another reader's notes file
-/// (its text, for the frontend to place).
-#[derive(serde::Serialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-enum Picked {
-    Book(LibEntry),
-    Notes { text: String },
-    /// A backup of a whole library (app/src/core/backup.ts): read by `picked_bytes`.
-    Backup,
-}
-
-/// A notebook exported as Markdown (app/src/reader/notesmd.ts), rather than a manuscript:
-/// its notes go back on their books.
-/// Or notes as W3C Web Annotations (app/src/reader/webanno.ts), from here or another tool.
-fn is_notes_markdown(bytes: &[u8]) -> bool {
-    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(4000)]);
-    head.lines().any(|l| l.starts_with("<!-- volumen-notes/")) || head.contains("http://www.w3.org/ns/anno.jsonld")
-}
-
-#[tauri::command]
-async fn pick_book(window: tauri::Window, app: State<'_, App>) -> Res<Option<Picked>> {
-    use tauri_plugin_dialog::DialogExt;
-    let picked = window.dialog().file().add_filter("Books, manuscripts, notes and backups", &["epub", "docx", "md", "markdown", "txt", "vnotes", "json", "jsonld", "vbackup"]).blocking_pick_file();
-    let Some(path) = picked.and_then(|p| p.into_path().ok()) else { return Ok(None) };
-    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-    if bytes.starts_with(b"VOLBK1") {
-        // (kept for the page to read: only the file just chosen can be read this way)
-        *app.picked.held() = Some(bytes);
-        return Ok(Some(Picked::Backup));
-    }
-    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("vnotes")) || is_notes_markdown(&bytes) {
-        return Ok(Some(Picked::Notes { text: String::from_utf8_lossy(&bytes).into_owned() }));
-    }
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    guarded(|| add(&app, &bytes, &name, false)).map(|e| Some(Picked::Book(e)))
-}
-
 #[tauri::command]
 async fn open_book(id: String, app: State<'_, App>) -> Res<String> {
     guarded(|| {
@@ -342,131 +269,6 @@ async fn probe(p: LayoutRequest, texts: Vec<String>, app: State<'_, App>) -> Res
     guarded(|| Ok(app.engine.held().probe(&p, &t)?.into_iter().flat_map(|(a, b, c)| [a, b, c]).collect()))
 }
 
-fn with_fonts<T>(app: &App, f: impl FnOnce(&fontdb::Database) -> T) -> T {
-    let mut db = app.sysfonts.held();
-    let db = db.get_or_insert_with(|| {
-        let mut d = fontdb::Database::new();
-        d.load_system_fonts();
-        d
-    });
-    f(db)
-}
-
-/// Families installed on this computer that the reader can use: plain TrueType or
-/// OpenType files (collections are left out: a webview cannot load one face of them).
-#[tauri::command]
-async fn system_families(app: State<'_, App>) -> Res<Vec<String>> {
-    let mut names: Vec<String> = with_fonts(&app, |db| {
-        db.faces()
-            .filter(|f| f.index == 0 && matches!(&f.source, fontdb::Source::File(p) if p.extension().and_then(|e| e.to_str()).is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "ttf" | "otf"))))
-            .filter_map(|f| f.families.first().map(|(n, _)| n.clone()))
-            .collect()
-    });
-    names.sort_by_key(|n| n.to_lowercase());
-    names.dedup();
-    names.retain(|n| !BUNDLED.iter().any(|(b, _)| b == n));
-    Ok(names)
-}
-
-/// Loads a family into the engine (bundled ones are already there) and describes its
-/// files, which the webview then fetches with `font_file`.
-#[tauri::command]
-async fn load_family(name: String, app: State<'_, App>) -> Res<serde_json::Value> {
-    let bundled = BUNDLED.iter().any(|(b, _)| *b == name);
-    if !bundled && !app.loaded.held().contains_key(&name) {
-        let paths: Vec<std::path::PathBuf> = with_fonts(&app, |db| {
-            let mut v: Vec<std::path::PathBuf> = db
-                .faces()
-                .filter(|f| f.index == 0 && f.families.first().is_some_and(|(n, _)| *n == name))
-                .filter_map(|f| if let fontdb::Source::File(p) = &f.source { Some(p.clone()) } else { None })
-                .collect();
-            v.sort();
-            v.dedup();
-            v
-        });
-        if paths.is_empty() {
-            return Err(format!("{name} is not installed"));
-        }
-        let mut files = Vec::new();
-        let mut eng = app.engine.held();
-        for p in paths {
-            let Ok(bytes) = std::fs::read(&p) else { continue };
-            if eng.add_font(&name, bytes.clone()).is_ok() {
-                files.push(SysFile { italic: false, wmin: 0.0, wmax: 0.0, bytes: std::sync::Arc::new(bytes) });
-            }
-        }
-        // describe each file as the engine read it
-        if let Some(info) = eng.family_info(&name) {
-            let italics = info_italics(&eng, &name);
-            for (i, f) in files.iter_mut().enumerate() {
-                (f.wmin, f.wmax) = info.weights[i];
-                f.italic = italics[i];
-            }
-        }
-        app.loaded.held().insert(name.clone(), files);
-    }
-    let eng = app.engine.held();
-    let info = eng.family_info(&name).ok_or_else(|| format!("{name} could not be loaded"))?;
-    let files = if bundled { vec![] } else { app.loaded.held().get(&name).cloned().unwrap_or_default() };
-    Ok(serde_json::json!({ "bundled": bundled, "smcp": info.smcp, "italic": info.italic, "files": files }))
-}
-
-fn info_italics(eng: &Engine, name: &str) -> Vec<bool> {
-    eng.family_files(name).iter().map(|f| f.italic).collect()
-}
-
-/// One file of a loaded system family, for the webview's FontFace.
-#[tauri::command]
-async fn font_file(name: String, index: usize, app: State<'_, App>) -> Res<Response> {
-    let files = app.loaded.held();
-    let f = files.get(&name).and_then(|v| v.get(index)).ok_or("no such font file")?;
-    Ok(Response::new(f.bytes.as_ref().clone()))
-}
-
-/// The desktop's colours, where the desktop publishes them (Omarchy).
-fn omarchy_dir() -> Option<std::path::PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    let d = std::path::PathBuf::from(home).join(".local/state/omarchy/current");
-    d.join("theme/colors.toml").exists().then_some(d)
-}
-
-#[tauri::command]
-fn desktop_palette() -> Option<serde_json::Value> {
-    let d = omarchy_dir()?;
-    let text = std::fs::read_to_string(d.join("theme/colors.toml")).ok()?;
-    let mut m = serde_json::Map::new();
-    for line in text.lines() {
-        let Some((k, v)) = line.split_once('=') else { continue };
-        let v = v.trim().trim_matches('"');
-        m.insert(k.trim().to_string(), serde_json::Value::String(v.to_string()));
-    }
-    let name = std::fs::read_to_string(d.join("theme.name")).unwrap_or_default();
-    m.insert("name".into(), serde_json::Value::String(name.trim().to_string()));
-    Some(serde_json::Value::Object(m))
-}
-
-/// Tells the frontend when the desktop's theme changes.
-fn watch_desktop(app: tauri::AppHandle) {
-    let Some(d) = omarchy_dir() else { return };
-    std::thread::spawn(move || {
-        use tauri::Emitter;
-        let stamp = || {
-            let a = std::fs::read_to_string(d.join("theme.name")).unwrap_or_default();
-            let b = std::fs::metadata(d.join("theme/colors.toml")).and_then(|m| m.modified()).ok();
-            (a, b)
-        };
-        let mut last = stamp();
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(1200));
-            let now = stamp();
-            if now != last {
-                last = now;
-                let _ = app.emit("volumen://desktop", ());
-            }
-        }
-    });
-}
-
 #[tauri::command]
 async fn state_load(app: State<'_, App>) -> Res<Vec<(String, String)>> {
     app.store.held().state().map_err(|e| e.to_string())
@@ -505,68 +307,12 @@ async fn image_bytes(id: String, idx: u32, app: State<'_, App>) -> Res<Response>
     Ok(Response::new(found.map(|(_, b)| b).unwrap_or_default()))
 }
 
-/// Chapters of a file as an EPUB of their own (`vol_engine::epub_of`): the file in the
-/// body, its name and the chapters in headers.
-#[tauri::command]
-async fn epub_of(request: Request<'_>) -> Res<Response> {
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected a file".into()) };
-    let h = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).map(percent_decode).unwrap_or_default();
-    let (from, to) = (h("x-from").parse().unwrap_or(1), h("x-to").parse().unwrap_or(usize::MAX));
-    let name = h("x-name");
-    Ok(Response::new(guarded(|| vol_engine::epub_of(bytes, &name, from, to))?))
-}
-
-/// Readers' notes put into a Word file as Word comments (`vol_engine::annotate_docx`).
-/// Both ways one body: a u32 length (big-endian), that much JSON (the notes; the
-/// report), then the Word file.
-#[tauri::command]
-async fn annotate_docx(request: Request<'_>) -> Res<Response> {
-    let tauri::ipc::InvokeBody::Raw(body) = request.body() else { return Err("expected the notes and a Word file".into()) };
-    let n = body.get(..4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize).ok_or("damaged request")?;
-    let notes = std::str::from_utf8(body.get(4..4 + n).ok_or("damaged request")?).map_err(|e| e.to_string())?;
-    let docx = &body[4 + n..];
-    let (out, report) = guarded(|| vol_engine::annotate_docx(docx, notes))?;
-    let mut answer = (report.len() as u32).to_be_bytes().to_vec();
-    answer.extend_from_slice(report.as_bytes());
-    answer.extend_from_slice(&out);
-    Ok(Response::new(answer))
-}
-
 /// Replaces a book's cover with a smaller one (the library's thumbnail: `Library.svelte`).
 #[tauri::command]
 async fn set_cover(request: Request<'_>, app: State<'_, App>) -> Res<()> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected image bytes".into()) };
     let id = request.headers().get("x-id").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
     app.store.held().put_cover(&id, bytes).map_err(|e| e.to_string())
-}
-
-/// Saves text (a notebook export, a theme) where the reader chooses. Returns false if
-/// cancelled.
-#[tauri::command]
-async fn save_text(window: tauri::Window, name: String, text: String, ext: Option<String>) -> Res<bool> {
-    use tauri_plugin_dialog::DialogExt;
-    let (label, ext) = match ext.as_deref() {
-        Some("json") => ("Theme", "json"),
-        Some("vnotes") => ("Notes", "vnotes"),
-        _ => ("Markdown", "md"),
-    };
-    let Some(path) = window.dialog().file().set_file_name(&name).add_filter(label, &[ext]).blocking_save_file() else { return Ok(false) };
-    let path = path.into_path().map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| e.to_string())?;
-    Ok(true)
-}
-
-/// Offers bytes as a file to save (a sealed book: app/src/core/share.ts). Returns false
-/// if cancelled.
-#[tauri::command]
-async fn save_bytes(window: tauri::Window, request: Request<'_>) -> Res<bool> {
-    use tauri_plugin_dialog::DialogExt;
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("expected bytes".into()) };
-    let name = request.headers().get("x-name").and_then(|v| v.to_str().ok()).map(percent_decode).unwrap_or_default();
-    let Some(path) = window.dialog().file().set_file_name(&name).add_filter("Sealed book", &["vbook"]).blocking_save_file() else { return Ok(false) };
-    let path = path.into_path().map_err(|e| e.to_string())?;
-    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
-    Ok(true)
 }
 
 #[tauri::command]
@@ -580,88 +326,14 @@ async fn remove_book(id: String, app: State<'_, App>) -> Res<()> {
     app.store.held().remove(&id).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn selftest_mode() -> bool {
-    cfg!(debug_assertions) && std::env::var_os("VOLUMEN_SELFTEST").is_some()
-}
-
-/// Which self-test to run (`VOLUMEN_SELFTEST=wheel` records wheel input; anything else
-/// runs the full test).
-#[tauri::command]
-fn selftest_arg() -> String {
-    if !selftest_mode() {
-        return String::new();
-    }
-    std::env::var("VOLUMEN_SELFTEST").unwrap_or_default()
-}
-
-/// A corpus book for the self-test (debug builds only).
-#[tauri::command]
-fn dev_corpus(name: String) -> Res<Response> {
-    if !cfg!(debug_assertions) || name.contains('/') {
-        return Err("not available".into());
-    }
-    // the corpus, then the generated fixtures (bench/fixtures)
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-    let p = [root.join("corpus").join(&name), root.join("bench/fixtures").join(&name)].into_iter().find(|p| p.exists()).ok_or("no such book")?;
-    Ok(Response::new(std::fs::read(p).map_err(|e| e.to_string())?))
-}
-
-/// Zooms the webview (debug builds only): the self-test's stand-in for display scaling.
-#[tauri::command]
-fn dev_zoom(window: tauri::WebviewWindow, scale: f64) -> Res<()> {
-    if !cfg!(debug_assertions) {
-        return Err("not available".into());
-    }
-    window.set_zoom(scale).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn dev_log(msg: String) {
-    if cfg!(debug_assertions) {
-        println!("SELFTEST {msg}");
-    }
-}
-
-#[tauri::command]
-fn dev_quit(app: tauri::AppHandle) {
-    if cfg!(debug_assertions) && std::env::var_os("VOLUMEN_SELFTEST").is_some() {
-        app.exit(0);
-    }
-}
-
 /// The frontend has saved its state and released its GL context: now the app may exit.
 /// (Exiting with a live WebGL context crashes WebKitGTK's web process inside the nvidia
 /// EGL driver, 2.52.6 / 580.x.)
 #[tauri::command]
 fn quit_now(app: tauri::AppHandle) {
     #[cfg(target_os = "linux")]
-    end_web_processes();
+    desktop::end_web_processes();
     app.exit(0);
-}
-
-/// WebKitGTK 2.52 with GPU compositing on the nvidia driver crashes (SIGSEGV in
-/// libnvidia-eglcore) while its web process tears down its EGL context at exit. The
-/// frontend has already saved, so the app ends its own web processes before exiting:
-/// they run no teardown, and nothing crashes. Only direct children are touched.
-#[cfg(target_os = "linux")]
-fn end_web_processes() {
-    // give the last storage writes a moment to reach WebKit's storage process
-    std::thread::sleep(std::time::Duration::from_millis(150));
-    let me = std::process::id().to_string();
-    let Ok(dir) = std::fs::read_dir("/proc") else { return };
-    for e in dir.flatten() {
-        let name = e.file_name();
-        let Some(pid) = name.to_str().filter(|p| p.bytes().all(|b| b.is_ascii_digit())) else { continue };
-        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { continue };
-        // stat: pid (comm) state ppid ...
-        let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else { continue };
-        let comm = &stat[open + 1..close];
-        let ppid = stat[close + 2..].split(' ').nth(1).unwrap_or("");
-        if ppid == me && comm.starts_with("WebKitWebProces") {
-            let _ = std::process::Command::new("kill").args(["-KILL", pid]).status();
-        }
-    }
 }
 
 fn percent_decode(s: &str) -> String {
@@ -669,50 +341,28 @@ fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+        if b[i] == b'%' && i + 2 < b.len()
+            && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
                 out.push(v);
                 i += 3;
                 continue;
             }
-        }
         out.push(b[i]);
         i += 1;
     }
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// On the proprietary nvidia driver WebKitGTK's DMA-BUF renderer paints nothing. With it
-/// off, GPU compositing works (WebKitGTK 2.52, tested 2026-10-13): smoother, vsynced.
-/// `VOLUMEN_SAFE_GPU=1` also turns compositing off, the older workaround.
-#[cfg(target_os = "linux")]
-fn webkit_workarounds() {
-    let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
-    if !nvidia || std::env::var_os("VOLUMEN_KEEP_GPU").is_some() {
-        return;
-    }
-    let mut vars = vec!["WEBKIT_DISABLE_DMABUF_RENDERER"];
-    if std::env::var_os("VOLUMEN_SAFE_GPU").is_some() {
-        vars.push("WEBKIT_DISABLE_COMPOSITING_MODE");
-    }
-    for k in vars {
-        if std::env::var_os(k).is_none() {
-            // SAFETY: called before any other thread starts
-            unsafe { std::env::set_var(k, "1") };
-        }
-    }
-}
-
 fn main() {
     #[cfg(target_os = "linux")]
-    webkit_workarounds();
+    desktop::webkit_workarounds();
     catch_panics();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let mut dir = app.path().app_data_dir()?;
             // the self-test never touches the reader's own library and state
-            if selftest_mode() {
+            if dev::selftest_mode() {
                 dir.push("selftest");
             }
             let store = Store::open(&dir)?;
@@ -727,10 +377,9 @@ fn main() {
             }
             let indexer = Mutex::new(start_indexer(dir.clone()));
             let state = App { engine: Mutex::new(engine), store: Mutex::new(store), indexer, sysfonts: Mutex::new(None), loaded: Mutex::new(Default::default()), picked: Mutex::new(None) };
-            watch_desktop(app.handle().clone());
-            // the sample book on first run; and again if it predates covers
-            let lib = state.store.held().library().unwrap_or_default();
-            if lib.is_empty() || lib.iter().any(|e| e.sample && !e.cover) {
+            desktop::watch_desktop(app.handle().clone());
+            // the sample book on first run
+            if state.store.held().library().unwrap_or_default().is_empty() {
                 add(&state, SAMPLE, "sample.epub", true).ok();
             }
             app.manage(state);
@@ -752,7 +401,13 @@ fn main() {
                 responder.respond(res.unwrap());
             });
         })
-        .invoke_handler(tauri::generate_handler![import_bytes, pick_book, open_book, layout, find, search_library, place_notes, font_needs, probe, library, remove_book, state_load, state_put, cover, set_cover, set_image_sizes, image_bytes, annotate_docx, epub_of, reimport, source_name, source_bytes, picked_bytes, save_text, save_bytes, system_families, load_family, font_file, desktop_palette, selftest_mode, selftest_arg, dev_corpus, dev_zoom, dev_log, dev_quit, quit_now])
+        .invoke_handler(tauri::generate_handler![
+            import_bytes, open_book, layout, find, search_library, place_notes, font_needs, probe, library, remove_book, reimport, source_name, source_bytes,
+            state_load, state_put, cover, set_cover, set_image_sizes, image_bytes, quit_now,
+            files::pick_book, files::picked_bytes, files::save_text, files::save_bytes, files::epub_of, files::annotate_docx,
+            fonts::system_families, fonts::load_family, fonts::font_file, desktop::desktop_palette,
+            dev::selftest_mode, dev::selftest_arg, dev::dev_corpus, dev::dev_zoom, dev::dev_log,
+        ])
         .on_window_event(|window, event| {
             // closing goes through the frontend, which saves and releases its GL context
             // first; if it does not answer within two seconds the app exits anyway

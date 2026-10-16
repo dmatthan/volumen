@@ -1,8 +1,8 @@
-/** The book as the reader receives it (offsets are UTF-16). Mirrors vol_model::js. */
 /** What the importer makes of a file, as a number: `vol_ingest::VERSION` (keep the same).
  *  Books read by an earlier one are read again from their kept file (reader/reread.ts). */
 export const IMPORTER_VERSION = 4;
 
+/** The book as the reader receives it (offsets are UTF-16). Mirrors vol_model::js. */
 export interface BookData {
   id: string;
   title: string;
@@ -13,8 +13,7 @@ export interface BookData {
   words: number;
   sections: SectionData[];
   notes: NoteData[];
-  /** Each image's width and height (CSS px) and description. */
-  /** Width, height (0 for a rich block not yet measured), description, type. */
+  /** Each image's width, height (0 for a rich block not yet measured), description, type. */
   images: [number, number, string, string][];
   /** Its characters beyond the bundled faces' core files (fonts.css), each once; empty
    *  for most books. The extension faces that have them are loaded for it. */

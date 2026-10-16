@@ -1,7 +1,8 @@
 import type { Core, LayoutParams } from '../core/types';
 
-/** Does this webview position glyphs on whole pixels? The press can model either; we
- *  ask it for both widths of a few probe strings and compare with what the DOM draws. */
+// Does this webview position glyphs on whole pixels? The press can model either; we ask
+// it for both widths of a few probe strings and compare with what the DOM draws.
+
 /** Probe widths come back from the engine as [exact, whole px, 1/60 px] per string. */
 const PROBES = [
   'and the mysterious mixture behaves under the varying experiments of Time',
@@ -14,8 +15,6 @@ const PROBES = [
  *  (Firefox); neither: exact (WebKit, Chromium with subpixel positioning). */
 export interface Calibration { round: boolean; appUnits: boolean; spaceKern: 0 | 1 | 2; linkRuns: boolean; err: number }
 const cache = new Map<string, Calibration>();
-/** (benches: what is known) */
-export const calCache = cache;
 
 /** `host` must carry the reader's type (its CSS variables), as the lines do. */
 export async function calibrate(core: Core, host: HTMLElement, p: LayoutParams): Promise<Calibration> {

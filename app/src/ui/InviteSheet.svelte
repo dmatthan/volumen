@@ -1,6 +1,6 @@
 <script lang="ts">
   import Sheet from './Sheet.svelte';
-  import { ui, toast } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
   import { service, register, personToken, canPasskey, syncShares } from '../core/service';
   import type { Core } from '../core/types';
 

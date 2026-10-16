@@ -315,11 +315,10 @@ fn sums(its: &[Item]) -> Sums {
 fn line_start(its: &[Item], at: usize) -> usize {
     let mut i = if at == usize::MAX { 0 } else { at + 1 };
     while i < its.len() && !its[i].is_box() {
-        if let K::Pen { p, .. } = its[i].k {
-            if p <= -INF {
+        if let K::Pen { p, .. } = its[i].k
+            && p <= -INF {
                 break;
             }
-        }
         i += 1;
     }
     i

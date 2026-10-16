@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { ui, type Reader } from '../reader/reader.svelte';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui } from '../state.svelte';
   import { noteHTML } from '../reader/render';
 
   /** A book's footnote or endnote, beside its marker, in the book's own type. Esc or a

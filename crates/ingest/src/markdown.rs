@@ -79,11 +79,10 @@ pub fn parse(bytes: &[u8], name: &str) -> Result<crate::Book, Error> {
             }
             Event::End(TagEnd::Item) => {
                 item = item.saturating_sub(1);
-                if let Some(b) = cur.take() {
-                    if !b.is_empty() {
+                if let Some(b) = cur.take()
+                    && !b.is_empty() {
                         paras.push(Para::Item(b));
                     }
-                }
             }
             Event::Start(Tag::CodeBlock(_)) => code = Some(String::new()),
             Event::End(TagEnd::CodeBlock) => {

@@ -142,10 +142,9 @@ export function webCore(): Core & { importSample(bytes: Uint8Array): Promise<Lib
   };
 }
 
-/** Adds the sample book on first run, and again if it predates covers. */
+/** Adds the sample book to an empty library (the first run). */
 export async function seedSample(core: ReturnType<typeof webCore>) {
-  const lib = await core.library();
-  if (lib.length && !lib.some(e => e.sample && !e.cover)) return;
+  if ((await core.library()).length) return;
   const bytes = new Uint8Array(await (await fetch(at('sample.epub'))).arrayBuffer());
   await core.importSample(bytes);
 }

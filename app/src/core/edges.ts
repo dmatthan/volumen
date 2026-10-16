@@ -4,17 +4,18 @@
  *  views, with the reader's own fade between themes).
  *
  *  Browsers take it from different places: Chrome on Android and installed apps from
- *  `theme-color`; Safari 26 on iOS ignores that and samples the background of a
- *  `position: fixed` element at least 80% wide within a few pixels of the top (and of
- *  the bottom), else the body's. So two such strips sit at the edges, the page's own
- *  colour, under everything; Safari is asked to look again when the colour changes (a
- *  strip that appears is sampled anew). */
+ *  `theme-color`; Safari 26 on iOS ignores that and takes the background of a
+ *  `position: fixed` element at least 90% wide that a hit test finds 4 px inside the top
+ *  (and the bottom) edge, else the body's, and fills the band under its bars with it
+ *  (WebKit `LocalFrameView::fixedContainerEdges`). So two such strips sit at the edges,
+ *  the page's own colour (the top one seen, in the band under the status bar: tokens.css);
+ *  Safari is asked to look again when the colour changes (a strip that appears is sampled
+ *  anew). */
+import { isSafari } from './env';
+
 let meta: HTMLMetaElement | null = null;
 let probe: CanvasRenderingContext2D | null = null;
 let strips: HTMLElement[] = [];
-/** Safari (not the desktop app's WebKit, not Chrome or Firefox on iOS, which have their
- *  own bars): the browser that samples the strips. */
-const safari = /Safari\//.test(navigator.userAgent) && !/Chrome|Chromium|CriOS|FxiOS|EdgiOS|Android/.test(navigator.userAgent) && !('__TAURI_INTERNALS__' in window);
 let again = 0;
 
 export function edges(color: string, ms: number) {
@@ -26,7 +27,7 @@ export function edges(color: string, ms: number) {
     el.style.transitionDuration = `${ms}ms`;
     el.style.backgroundColor = color;
   }
-  if (!strips.length && safari) {
+  if (!strips.length && isSafari) {
     strips = ['top', 'bottom'].map(side => {
       const d = document.createElement('div');
       d.className = `edge-strip ${side}`;

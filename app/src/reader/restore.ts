@@ -1,7 +1,10 @@
 import type { BookData, Core } from '../core/types';
 import { kv } from '../core/kv';
+import { keyIndexOf } from '../core/book';
+import { count } from '../core/say';
 import { Annotations, type Annotation } from './annotations';
-import { me, type FileNote, type NotesFile } from './feedback';
+import { me } from '../core/identity';
+import type { FileNote, NotesFile } from './feedback';
 import { notebookOf, saveDigest } from './notebook';
 
 /** Whether a notes file is this reader's own (an export, or a copy from another device of
@@ -39,8 +42,7 @@ export async function restoreInto(f: NotesFile, book: BookData, core: Core, ann:
 /** The same for a book that is not open: its notebook's digest is written again. */
 export async function restoreOwn(f: NotesFile, bookId: string, core: Core) {
   const book = await core.open(bookId);
-  const keyIndex = new Map<string, [number, number]>();
-  book.sections.forEach((s, si) => s.blocks.forEach((b, bi) => keyIndex.set(b.key, [si, bi])));
+  const keyIndex = keyIndexOf(book);
   const ann = new Annotations(book, keyIndex);
   const marks = new Set(kv.get<string[]>('marks.' + bookId, []));
   const r = await restoreInto(f, book, core, ann, marks);
@@ -50,7 +52,6 @@ export async function restoreOwn(f: NotesFile, bookId: string, core: Core) {
 
 /** What came back, said plainly. */
 export function restored(title: string, r: { back: number; lost: number }) {
-  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
   if (!r.back && !r.lost) return `Your notes on “${title}” are all here already.`;
-  return `${n(r.back, 'of your notes', 'of your notes')} put back on “${title}”${r.lost ? `; ${n(r.lost, 'was', 'were')} not found in this version` : ''}.`;
+  return `${count(r.back, 'of your notes', 'of your notes')} put back on “${title}”${r.lost ? `; ${count(r.lost, 'was', 'were')} not found in this version` : ''}.`;
 }

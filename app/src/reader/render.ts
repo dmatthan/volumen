@@ -3,13 +3,10 @@ import { BlockKind, Style, type BlockData, type BookData } from '../core/types';
 import type { Metrics } from './geometry';
 import type { Annotation } from './annotations';
 import { F, FIELDS, Flag, type Item, type Strip } from './strip';
+import { RICH } from './rich';
 
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/** Inline HTML for text[s, e) of a block: its styled runs, links and marks
- *  (highlights, find hits). Nesting is mark ⟩ link ⟩ style; each mark is one element over
- *  its whole run on the line, so it draws as one shape. Nothing here changes the text's
- *  width: links are colour and underline only. */
 /** Stretches of a block other readers marked, with their colours (feedback.ts). */
 export type FbSeg = { s: number; e: number; colours: number[]; ids: string[] };
 
@@ -20,6 +17,10 @@ function fbOpen(f: FbSeg) {
   return `<span class="fb" data-f="${esc(f.ids.join(' '))}" style="background:${bg}">`;
 }
 
+/** Inline HTML for text[s, e) of a block: its styled runs, links and marks
+ *  (highlights, find hits). Nesting is mark ⟩ link ⟩ style; each mark is one element over
+ *  its whole run on the line, so it draws as one shape. Nothing here changes the text's
+ *  width: links are colour and underline only. */
 function inline(b: BlockData, s: number, e: number, hls?: Annotation[], fbs?: FbSeg[]): string {
   const t = b.t, r = b.r, ls = b.l;
   const hs = hls?.filter(a => a.s < e && a.e > s);
@@ -109,7 +110,7 @@ const rtlOf = new WeakMap<object, boolean>();
 /** A paragraph written right to left (Hebrew, Arabic): told by its first letter, as
  *  HTML's dir="auto" tells it. Its lines are set from the column's right edge, the
  *  indent there too; the press's lines are the same either way. */
-export function rtl(b: { t: string }): boolean {
+function rtl(b: { t: string }): boolean {
   let v = rtlOf.get(b);
   if (v === undefined) {
     const first = /\p{L}/u.exec(b.t);
@@ -122,7 +123,6 @@ export function rtl(b: { t: string }): boolean {
 /** The optical size the press measures a size at (shape.rs `opsz`). */
 const opsz = (px: number) => Math.min(144, Math.max(6, px));
 
-/** The text lines of one column. */
 /** Other readers' notes, for drawing (feedback.ts `Feedback`). */
 export interface FbView {
   segments(key: string): FbSeg[];
@@ -131,6 +131,7 @@ export interface FbView {
   colourOf(r: string): number;
 }
 
+/** The text lines of one column. */
 export function columnHTML(strip: Strip, k: number, M: Metrics, marks: Set<string>, marksOf?: (key: string) => Annotation[] | undefined, imgSrc?: (i: number) => string, fb?: FbView): string {
   const L = strip.linesAt(k);
   let html = '';
@@ -158,7 +159,7 @@ export function columnHTML(strip: Strip, k: number, M: Metrics, marks: Set<strin
       const h = spaces * M.lh, i = b.img ?? -1, alt = b.t;
       const src = imgSrc?.(i) ?? '';
       // on whole pixels, so the image's edges stay crisp
-      const rich = strip.book.images[i]?.[3] === 'application/xhtml+xml';
+      const rich = strip.book.images[i]?.[3] === RICH;
       html += `<figure class="img${rich ? ' rich' : ''}" data-i="${i}" data-b="${bi}" style="top:${Math.round(top + (h - nat) / 2)}px;left:${Math.round(x)}px;width:${Math.round(avail)}px;height:${Math.round(nat)}px">`
         + `<img data-i="${i}" alt="${esc(alt)}" decoding="async"${src ? ` src="${esc(src)}"` : ''}></figure>`;
       continue;

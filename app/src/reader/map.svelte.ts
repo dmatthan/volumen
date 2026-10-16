@@ -1,7 +1,8 @@
-import { copyText } from '../ui/clipboard';
+import { copyText } from '../core/clipboard';
 import type { Reader } from './reader.svelte';
-import { ui, toast } from './reader.svelte';
+import { ui, toast } from '../state.svelte';
 import { F, FIELDS, Flag } from './strip';
+import { BlockKind } from '../core/types';
 import { T, readTokens, hueAt } from './tokens';
 import { chapName, chapTitle } from './render';
 import { reduceMotion } from './settings.svelte';
@@ -90,7 +91,7 @@ export class MapCtl {
     const fbIn = r.fb?.size ? r.fb.perSection() : null;
     mp.chapters = book.sections.map((s, sec) => {
       let n = 0, seen = 0;
-      for (const b of s.blocks) { if (b.k === 8) continue; n++; if (r.seen.has(b.key)) seen++; }
+      for (const b of s.blocks) { if (b.k === BlockKind.Break) continue; n++; if (r.seen.has(b.key)) seen++; }
       return { sec, num: s.k === 1 ? s.num : '', title: s.label && s.title ? s.title : chapTitle(book, sec), read: n > 0 && seen / n > 0.95, current: hereIt?.sec === sec, feedback: fbIn?.get(sec) ?? 0 };
     });
     mp.gauge = {
@@ -158,7 +159,7 @@ export class MapCtl {
   open() {
     const r = this.r;
     if (ui.mapOpen || !r.strip || ui.sheet) return;
-    r.pickEnd();
+    r.cursor.end();
     ui.mapOpen = true; this.busy = true;
     mp.view = 'strip'; mp.sel = null; mp.here = r.cur; mp.uiIn = false;
     mp.find = !!r.finder.query.trim();

@@ -1,5 +1,5 @@
 import { kv } from '../core/kv';
-import { ui, toast } from './reader.svelte';
+import { ui, toast } from '../state.svelte';
 
 /** Onboarding without a tour: a short hint at the moment a faster way would help, each
  *  shown once. Never over a sheet, never two within a minute and a half, so reading is
@@ -26,5 +26,3 @@ export function hint(id: string, text: string, ms = 5600): boolean {
   return true;
 }
 
-/** Whether a hint has been shown (for triggers that count towards one). */
-export const hinted = (id: string) => kv.get<string[]>('hints', []).includes(id);

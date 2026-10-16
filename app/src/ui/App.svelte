@@ -1,10 +1,11 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { linkOf, canSeal, unseal } from '../core/share';
-  import { fetchSealed, joinedOf, newerDraft } from '../core/service';
+  import { joinedOf, newerDraft } from '../core/service';
+  import { openFromLink } from './links';
   import { embedded, embeddedBook, embedOpts } from '../core/embed';
   import type { Core } from '../core/types';
-  import { ui, Reader, toast } from '../reader/reader.svelte';
+  import { Reader } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
   import { MapCtl } from '../reader/map.svelte';
   import { settings, save, type Layout } from '../reader/settings.svelte';
   import { themes, readDesktop, setOption, resetOptions, themeById } from '../reader/themes.svelte';
@@ -35,12 +36,17 @@
       const { invoke } = await import('@tauri-apps/api/core');
       if (!(await invoke<boolean>('selftest_mode'))) return;
       setHints(false);
-      const { selftest, wheelProbe, sheetProbe, contentProbe, libraryProbe, searchProbe, probeStrings, scaleProbe } = await import('../selftest');
+      const t = await import('../selftest');
       const arg = await invoke<string>('selftest_arg');
       const log = (s: string) => invoke<void>('dev_log', { msg: s });
+      // VOLUMEN_SELFTEST=<name>: one of these; anything else, the full test
+      const probes: Record<string, () => Promise<unknown>> = {
+        wheel: () => t.wheelProbe(reader, log), sheet: () => t.sheetProbe(reader, log), content: () => t.contentProbe(reader, log),
+        library: () => t.libraryProbe(reader, log), search: () => t.searchProbe(reader, log), probe: () => t.probeStrings(reader, log), scale: () => t.scaleProbe(reader, log),
+      };
       // a self-test must always end: on failure it says why, and a watchdog quits a stall
-      const dog = setTimeout(async () => { await log('{"error":"watchdog: the self-test ran over 3 minutes"}'); shell.quit(); }, arg === 'wheel' ? 90000 : arg === 'scale' ? 480000 : 180000);
-      try { await (arg === 'wheel' ? wheelProbe(reader, log) : arg === 'sheet' ? sheetProbe(reader, log) : arg === 'content' ? contentProbe(reader, log) : arg === 'library' ? libraryProbe(reader, log) : arg === 'search' ? searchProbe(reader, log) : arg === 'probe' ? probeStrings(reader, log) : arg === 'scale' ? scaleProbe(reader, log) : selftest(reader, map, log)); }
+      const dog = setTimeout(async () => { await log('{"error":"watchdog: the self-test ran over its time"}'); shell.quit(); }, arg === 'wheel' ? 90000 : arg === 'scale' ? 480000 : 180000);
+      try { await (probes[arg] ?? (() => t.selftest(reader, map, log)))(); }
       catch (e) { await log(JSON.stringify({ error: String((e as Error)?.message || e) })); }
       finally { clearTimeout(dog); await shell.quit(); }
     });
@@ -53,9 +59,6 @@
   }
   let chip: any = $state();
 
-  // The phone's back gesture (and the browser's back): closes what is on top, a sheet, a
-  // large image, the map, then the book. Each layer that opens adds a history entry; one
-  // the app closes itself takes its entry back, so history holds only what is open.
   // a book that came by link: has the writer sent a newer draft? (asked each time it
   // opens, one small request; never while it is read)
   let draftAskedFor = '';
@@ -79,6 +82,9 @@
     untrack(() => reader.paintEdges(viewChanged ? 0 : 250));
   });
 
+  // The phone's back gesture (and the browser's back): closes what is on top, a sheet, a
+  // large image, the map, then the book. Each layer that opens adds a history entry; one
+  // the app closes itself takes its entry back, so history holds only what is open.
   const layers = () => (ui.view === 'reader' ? 1 : 0) + (ui.mapOpen ? 1 : 0) + (ui.sheet ? 1 : 0) + (ui.lightbox ? 1 : 0);
   let shown = 0, popped = 0, unwinding = 0;
   $effect(() => {
@@ -109,50 +115,6 @@
   $effect(() => { settings.appearance; themes.desktop; reader.themeChanged(); });
   // svelte-ignore state_referenced_locally
   readDesktop(core);
-  // a book sent as a link (core/share.ts): fetched, opened with the key in the link, added
-  // and opened; the key is taken out of the address at once (history, a shared screen)
-  async function openFromLink() {
-    // an invitation to share books (scripts/service.sh): kept out of the address too
-    const inv = /^#invite=([\w-]{22,64})$/.exec(location.hash);
-    if (inv) {
-      history.replaceState(history.state, '', location.pathname + location.search);
-      if (ui.view === 'reader') reader.close();
-      ui.invite = inv[1];
-      ui.sheet = 'invite';
-      return;
-    }
-    const l = linkOf(location.hash);
-    if (!l) return;
-    history.replaceState(history.state, '', location.pathname + location.search);
-    if (!canSeal()) { toast('A book sent as a link opens only over https.', 6000); return; }
-    toast('Opening the book you were sent…', 15000);
-    try {
-      let sealed: Uint8Array;
-      if (l.at === 'service') sealed = await fetchSealed(l.id);
-      else {
-        const r = await fetch(l.url);
-        if (!r.ok) throw new Error(`it is not where the link says (${r.status})`);
-        sealed = new Uint8Array(await r.arrayBuffer());
-      }
-      const f = await unseal(sealed, l.key);
-      if (typeof f === 'string') { toast(f, 6000); return; }
-      const e = await core.importFile(f.bytes, f.name);
-      // (a writer opening their own link is not one of its readers)
-      const own = !!kv.get('share.' + e.id, null);
-      if (l.at === 'service' && !own) kv.set('joined.' + e.id, { ...(joinedOf(e.id) ?? {}), id: l.id, key: l.key });
-      ui.libVersion++;
-      ui.toastOn = false;
-      await reader.open(e.id);
-      // the first time: who sent it, and how notes are made and sent (WelcomeSheet)
-      if (!own && !kv.get<number>('welcomed.' + e.id, 0)) {
-        kv.set('welcomed.' + e.id, Date.now());
-        ui.welcome = { by: f.by ?? '' };
-        ui.sheet = 'welcome';
-      }
-    } catch (e) {
-      toast(`Couldn’t open the book you were sent: ${(e as Error).message}`, 6000);
-    }
-  }
   // one book in another site's page (core/embed.ts), or the app
   let embedError = $state('');
   if (embedded) {
@@ -162,8 +124,10 @@
     embeddedBook(core).then(async r => { if ('error' in r) embedError = r.error; else await reader.open(r.id); })
       .catch(e => { embedError = `The book could not be opened (${(e as Error).message}).`; });
   } else {
-    openFromLink();
-    addEventListener('hashchange', openFromLink);
+    // svelte-ignore state_referenced_locally
+    const fromLink = () => openFromLink(core, reader);
+    fromLink();
+    addEventListener('hashchange', fromLink);
   }
 
   // the web build's first run: the sample book, added while the library already shows
@@ -210,20 +174,20 @@
     if (ui.view === 'library') { if (library?.key(e)) e.preventDefault(); return; }
     if (ui.mapOpen) { if (map.key(e)) e.preventDefault(); return; }
     if (ui.chip) { if (chip?.key(e)) e.preventDefault(); return; }
-    if (reader.key(e)) { e.preventDefault(); return; }
+    if (reader.input.key(e)) { e.preventDefault(); return; }
     const k = e.key;
     if (k === 'm' || k === 'M') { e.preventDefault(); map.open(); }
     else if (k === 's' || k === 'S') { e.preventDefault(); ui.sheet = 'settings'; }
     else if (k === '?') { e.preventDefault(); ui.sheet = 'help'; }
     else if (k === '/') { e.preventDefault(); openFind(); }
     else if (k === 'q' || k === 'Q') { e.preventDefault(); reader.close(); }
-    else if (k === 'v' || k === 'V') { e.preventDefault(); reader.pickStart(); }
+    else if (k === 'v' || k === 'V') { e.preventDefault(); reader.cursor.start(); }
     else if (k === 'c' || k === 'C') { e.preventDefault(); cycleLayout(); }
     else if (k === 'Tab' && !e.shiftKey && document.activeElement === reader.stage) { /* let Tab reach the bar */ }
   }
 </script>
 
-<svelte:window onkeydown={onKey} onkeyup={e => reader.keyUp(e)} onblur={() => reader.blur()} />
+<svelte:window onkeydown={onKey} onkeyup={e => reader.input.keyUp(e)} onblur={() => reader.input.blur()} />
 
 <div class="app">
   {#if embedded}

@@ -1,9 +1,11 @@
 <script lang="ts">
   import { toWebAnno } from '../reader/webanno';
-  import { FORMAT, me, type NotesFile } from '../reader/feedback';
+  import { FORMAT, type NotesFile } from '../reader/feedback';
+  import { me } from '../core/identity';
   import { keyHint } from './touch';
   import { onMount, untrack } from 'svelte';
-  import { ui, toast, type Reader } from '../reader/reader.svelte';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
   import { mp, type MapCtl, type NoteItem } from '../reader/map.svelte';
   import { fold } from '../reader/notebook';
   import FeedbackList from './FeedbackList.svelte';

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { copyText } from './clipboard';
+  import { copyText } from '../core/clipboard';
   import { keyHint } from './touch';
   import { onMount, tick } from 'svelte';
   import type { LibEntry } from '../core/types';
   import type { Reader } from '../reader/reader.svelte';
-  import { toast } from '../reader/reader.svelte';
+  import { toast } from '../state.svelte';
   import { digests, fold, markdownOf, type NoteEntry } from '../reader/notebook';
   import { notesMarkdown } from '../reader/notesmd';
   import { shell } from '../core/shell';

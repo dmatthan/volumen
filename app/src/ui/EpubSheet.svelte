@@ -1,6 +1,6 @@
 <script lang="ts">
   import Sheet from './Sheet.svelte';
-  import { toast } from '../reader/reader.svelte';
+  import { toast } from '../state.svelte';
   import { shell } from '../core/shell';
   import type { Core, LibEntry } from '../core/types';
 

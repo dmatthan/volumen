@@ -1,6 +1,7 @@
 <script lang="ts">
   import Sheet from './Sheet.svelte';
-  import { ui, type Reader } from '../reader/reader.svelte';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui } from '../state.svelte';
   import { chapTitle } from '../reader/render';
 
   let { reader }: { reader: Reader } = $props();

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { copyText } from './clipboard';
+  import { copyText } from '../core/clipboard';
   import Sheet from './Sheet.svelte';
   import type { Reader } from '../reader/reader.svelte';
-  import { ui, toast } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
   import { settings, save } from '../reader/settings.svelte';
   import { bundledFamilies, systemFamilies, loadFamily, chainOf, cssFamily, saveUserTheme, resetOptions, parseTheme, aiBrief, type Palette } from '../reader/themes.svelte';
   import { contrast } from '../reader/color';

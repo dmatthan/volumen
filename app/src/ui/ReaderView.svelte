@@ -4,7 +4,8 @@
   import { isNotesMarkdown } from '../reader/notesmd';
   import { isWebAnno } from '../reader/webanno';
   import { onMount, untrack } from 'svelte';
-  import { ui, toast, type Reader } from '../reader/reader.svelte';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
   import type { MapCtl } from '../reader/map.svelte';
   import { settings } from '../reader/settings.svelte';
   import MapView from './MapView.svelte';

@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { count } from '../core/say';
   import Sheet from './Sheet.svelte';
-  import { ui, toast } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
   import { kv } from '../core/kv';
   import { carryOver } from '../reader/draft';
   import type { Core, LibEntry } from '../core/types';
@@ -15,8 +16,7 @@
   const mine = kv.get<unknown[]>('ann.' + from.id, []).length;
   // svelte-ignore state_referenced_locally
   const shared = !!kv.get('share.' + from.id, null);
-  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
-  const what = [readers ? `notes from ${n(readers, 'reader', 'readers')}` : '', mine ? n(mine, 'note of yours', 'notes of yours') : '', shared ? 'a share link' : ''].filter(Boolean);
+  const what = [readers ? `notes from ${count(readers, 'reader', 'readers')}` : '', mine ? count(mine, 'note of yours', 'notes of yours') : '', shared ? 'a share link' : ''].filter(Boolean);
 
   async function go(drop: boolean) {
     busy = true;
@@ -24,8 +24,8 @@
       const c = await carryOver(core, from, to);
       if (drop) await remove(from);
       const said = [
-        c.readers ? `${n(c.theirs, 'reader’s note', 'readers’ notes')} from ${n(c.readers, 'reader', 'readers')}${c.theirsLost ? ` (${c.theirsLost} not found in this draft, kept)` : ''}` : '',
-        c.mine ? `${n(c.mine, 'note of yours', 'notes of yours')}${c.mineLost ? ` (${c.mineLost} not found)` : ''}` : '',
+        c.readers ? `${count(c.theirs, 'reader’s note', 'readers’ notes')} from ${count(c.readers, 'reader', 'readers')}${c.theirsLost ? ` (${c.theirsLost} not found in this draft, kept)` : ''}` : '',
+        c.mine ? `${count(c.mine, 'note of yours', 'notes of yours')}${c.mineLost ? ` (${c.mineLost} not found)` : ''}` : '',
         c.shared ? 'the share link' : '',
       ].filter(Boolean);
       toast(`Carried over to the new draft: ${said.join(', ') || 'nothing to carry'}.`, 6400);

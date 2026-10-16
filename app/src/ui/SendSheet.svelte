@@ -1,7 +1,8 @@
 <script lang="ts">
   import Sheet from './Sheet.svelte';
-  import { ui, toast, type Reader } from '../reader/reader.svelte';
-  import { me, setName } from '../reader/feedback';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
+  import { me, setName } from '../core/identity';
   import { shell } from '../core/shell';
   import { service, joinedOf, sendNotes, personToken } from '../core/service';
   import { kv } from '../core/kv';

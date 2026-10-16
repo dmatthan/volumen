@@ -36,8 +36,8 @@ impl FontFile {
         }
         let weight = os2.as_ref().map(|o| o.us_weight_class() as f32).unwrap_or(400.0);
         let (mut wmin, mut wmax) = (weight, weight);
-        if let Ok(fvar) = t.fvar() {
-            if let Ok(axes) = fvar.axes() {
+        if let Ok(fvar) = t.fvar()
+            && let Ok(axes) = fvar.axes() {
                 for a in axes {
                     if a.axis_tag() == Tag::new(b"wght") {
                         wmin = a.min_value().to_f32();
@@ -45,7 +45,6 @@ impl FontFile {
                     }
                 }
             }
-        }
         let int_ppem = t.head().ok().is_some_and(|h| h.flags().bits() & 8 != 0);
         let smcp = t.gsub().ok().and_then(|g| g.feature_list().ok()).is_some_and(|fl| fl.feature_records().iter().any(|r| r.feature_tag() == Tag::new(b"smcp")));
         Some(FontFile { font, italic, wmin, wmax, smcp, int_ppem })

@@ -1,29 +1,11 @@
 import { kv } from '../core/kv';
+import { me, type Me } from '../core/identity';
+import { readingOrder, shareOf, type KeyIndex } from '../core/book';
 import type { BookData, Core, NoteAnchor } from '../core/types';
 import { isReaction, type Annotation, type Reaction } from './annotations';
 import { chapTitle } from './render';
 import { isNotesMarkdown, parseNotesMarkdown } from './notesmd';
 import { isWebAnno, fromWebAnno } from './webanno';
-
-/* ---------- who I am ---------- */
-
-/** A random id; `crypto.randomUUID` exists only on secure pages (https, localhost), not on
- *  a phone trying the app over the local network. */
-function newId(): string {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  const b = crypto.getRandomValues(new Uint8Array(16));
-  return [...b].map(x => x.toString(16).padStart(2, '0')).join('');
-}
-
-/** This reader: an id of their own (so their notes replace, not duplicate, their earlier
- *  ones at the writer's) and the name they give. Kept apart from settings, which reset. */
-export interface Me { id: string; name: string }
-export function me(): Me {
-  let m = kv.get<Me | null>('me', null);
-  if (!m) { m = { id: newId(), name: '' }; kv.set('me', m); }
-  return m;
-}
-export function setName(name: string) { kv.set('me', { ...me(), name: name.trim().replace(/\s+/g, ' ').slice(0, 60) }); }
 
 /* ---------- the notes file ---------- */
 
@@ -65,12 +47,8 @@ function opening(b: { key: string; t: string }, pos: number | undefined): NoteAn
 
 /** Everything this reader added to a book, as notes that travel: highlights as they
  *  are, marked paragraphs by their opening words. */
-export function fileNotes(book: BookData, ann: Annotation[], marks: Iterable<string>, keyIndex: Map<string, [number, number]>): FileNote[] {
-  let total = 0;
-  for (const s of book.sections) total += s.blocks.length;
-  const start: number[] = [];
-  book.sections.reduce((n, s, i) => { start[i] = n; return n + s.blocks.length; }, 0);
-  const posOf = (key: string) => { const h = keyIndex.get(key); return h ? (start[h[0]] + h[1]) / Math.max(1, total) : undefined; };
+export function fileNotes(book: BookData, ann: Annotation[], marks: Iterable<string>, keyIndex: KeyIndex): FileNote[] {
+  const posOf = (key: string) => shareOf(book, keyIndex, key);
   const notes: FileNote[] = [];
   for (const a of ann) {
     if (a.lost) continue;
@@ -86,7 +64,7 @@ export function fileNotes(book: BookData, ann: Annotation[], marks: Iterable<str
 }
 
 /** Everything this reader added to a book, as a notes file. */
-export function notesFile(book: BookData, ann: Annotation[], marks: Iterable<string>, keyIndex: Map<string, [number, number]>): NotesFile {
+export function notesFile(book: BookData, ann: Annotation[], marks: Iterable<string>, keyIndex: KeyIndex): NotesFile {
   const m = me();
   return { format: FORMAT, book: { id: book.id, title: book.title, author: book.author }, from: { id: m.id, name: m.name }, sent: Date.now(), notes: fileNotes(book, ann, marks, keyIndex) };
 }
@@ -118,7 +96,6 @@ export function parseNotes(text: string, book?: { id: string; title: string; aut
 function checked(v: any): NotesFile | string {
   if (v?.format !== FORMAT) return typeof v?.format === 'string' && v.format.startsWith('volumen-notes/') ? 'These notes come from a newer version of the app.' : 'This is not a notes file.';
   if (!v.book?.id || !v.from?.id || !Array.isArray(v.notes)) return 'This notes file is incomplete.';
-  // (files from before chapter lines were removed may hold them: they are left out)
   const ok = (n: any) => n && typeof n.key === 'string' && typeof n.quote === 'string' && Number.isFinite(n.s) && Number.isFinite(n.e) && ['highlight', 'mark'].includes(n.kind);
   const share = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 0);
   const pr = v.progress && typeof v.progress === 'object' ? { at: share(v.progress.at), furthest: share(v.progress.furthest), where: String(v.progress.where ?? '').slice(0, 80), done: v.progress.done === true } : undefined;
@@ -141,11 +118,9 @@ export class Feedback {
   hidden = new Set<string>();
   private byKey = new Map<string, { r: string; n: FbNote }[]>();
 
-  constructor(private book: BookData, private keyIndex: Map<string, [number, number]>) {
+  constructor(private book: BookData, private keyIndex: KeyIndex) {
     this.readers = kv.get<Record<string, FbReader>>('fb.' + book.id, {});
     this.status = kv.get<Record<string, 'done' | 'wont'>>('fbst.' + book.id, {});
-    // (notes received before chapter lines were removed may hold them)
-    for (const rd of Object.values(this.readers)) rd.notes = rd.notes.filter(n => n.kind === 'highlight' || n.kind === 'mark');
     this.index();
   }
 
@@ -190,7 +165,6 @@ export class Feedback {
   }
   private save() { kv.set('fb.' + this.book.id, this.readers); this.index(); }
 
-  /** Adds (or replaces) a reader's notes. */
   /** A reader's notes, replacing their older ones (an older file changes nothing: false). */
   add(f: NotesFile): boolean {
     const had = this.readers[f.from.id];
@@ -250,8 +224,6 @@ export class Feedback {
   /** One note by its reader and id. */
   find(rid: string) { const [r, id] = rid.split('|'); const rd = this.readers[r]; const n = rd?.notes.find(x => x.id === id); return n && { reader: rd.name, colour: this.colourOf(r), n }; }
 
-  /** Everything, gathered by passage in reading order: notes on overlapping words of one
-   *  block are one entry with every reader's voice. */
   /** What the writer decided about a passage (kept per book, `fbst.<id>`): done, or
    *  won't change; none is open. A passage is known by where it begins. */
   status: Record<string, 'done' | 'wont'> = {};
@@ -265,11 +237,13 @@ export class Feedback {
   /** Passages as `gathered`, with what the writer decided about each. */
   passages() { return this.gathered().map(g => ({ ...g, st: this.status[this.passageId(g)] as 'done' | 'wont' | undefined })); }
 
+  /** Everything, gathered by passage in reading order: notes on overlapping words of one
+   *  block are one entry with every reader's voice. */
   gathered() {
     const all: { r: string; n: FbNote }[] = [];
     for (const [r, rd] of Object.entries(this.readers)) if (!this.hidden.has(r)) for (const n of rd.notes) if (!n.lost) all.push({ r, n });
-    const pos = (x: { n: FbNote }) => { const h = this.keyIndex.get(x.n.key); return !h ? 9e15 : h[0] * 1e9 + h[1] * 1e4; };
-    all.sort((a, b) => pos(a) - pos(b) || a.n.s - b.n.s);
+    const pos = (x: { n: FbNote }) => { const h = this.keyIndex.get(x.n.key); return h ? readingOrder(h[0], h[1], x.n.s) : Infinity; };
+    all.sort((a, b) => pos(a) - pos(b));
     const groups: { key: string; sec: number; where: string; s: number; e: number; quote: string; voices: { reader: string; colour: number; kind: FbNote['kind']; note?: string; react?: Reaction; was?: string; rid: string; n: FbNote }[] }[] = [];
     for (const x of all) {
       const h = this.keyIndex.get(x.n.key)!;

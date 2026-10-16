@@ -8,6 +8,11 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef0f2">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#14161a">
 <link rel="icon" href="/app/icon-256.png">
+<!-- installed on an iPhone: below the status bar, not under it. Under it (what the manifest
+     alone gave), iOS 26 and later lay a Liquid Glass blur over the top ~110 px, the bar with
+     it; read only when the app is added to the Home Screen -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="/app/manifest.webmanifest">
 <link rel="preload" href="/fonts/Literata.ttf" as="font" type="font/ttf" crossorigin>
 <link rel="stylesheet" href="/site.css">

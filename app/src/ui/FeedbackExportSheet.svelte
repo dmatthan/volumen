@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { count } from '../core/say';
   import Sheet from './Sheet.svelte';
-  import { ui, toast, type Reader } from '../reader/reader.svelte';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
   import { shell } from '../core/shell';
   import { wordComments, feedbackMarkdown, feedbackCsv, criticMarkup } from '../reader/feedbackExport';
 
@@ -20,7 +22,6 @@
   let other: HTMLInputElement | undefined = $state();
 
   function close() { ui.sheet = null; }
-  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
 
   /** Into a Word or Markdown file: the writer's own, or another version of it. */
   async function into(file: { name: string; bytes: Uint8Array }) {
@@ -39,7 +40,7 @@
       }
       const name = `${base(file.name)} — with feedback.${k === 'docx' ? 'docx' : 'md'}`;
       if (await shell.saveBytes(name, bytes)) {
-        toast(`Saved: ${n(placed, 'note', 'notes')} ${k === 'docx' ? 'as comments' : 'in CriticMarkup'}${lost ? `; ${n(lost, 'was', 'were')} not found in that version` : ''}.`, 6000);
+        toast(`Saved: ${count(placed, 'note', 'notes')} ${k === 'docx' ? 'as comments' : 'in CriticMarkup'}${lost ? `; ${count(lost, 'was', 'were')} not found in that version` : ''}.`, 6000);
         close();
       }
     } catch (e) { toast(`The feedback could not be put in: ${(e as Error).message}`, 6000); }
@@ -62,7 +63,7 @@
   <div>
     <p class="eyebrow">Export feedback</p>
     <h2>{book.title}</h2>
-    <p class="where">{n(fb.list().filter(r => !fb.hidden.has(r.id)).length, 'reader', 'readers')}, {n(notes, 'note', 'notes')}. Readers you have hidden are left out.</p>
+    <p class="where">{count(fb.list().filter(r => !fb.hidden.has(r.id)).length, 'reader', 'readers')}, {count(notes, 'note', 'notes')}. Readers you have hidden are left out.</p>
   </div>
   <div class="ways">
     {#if source && kind(source.name)}

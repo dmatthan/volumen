@@ -1,6 +1,7 @@
 <script lang="ts">
   import { keyHint, touchUI } from './touch';
   import { coverThumb } from './thumb';
+  import { fitImage, fitTitle } from './covers';
   import { backup, restore, isBackup } from '../core/backup';
   import { shell } from '../core/shell';
   import ShareSheet from './ShareSheet.svelte';
@@ -9,81 +10,24 @@
   import EpubSheet from './EpubSheet.svelte';
   import { earlierDraft } from '../reader/draft';
   import { droppedFiles } from './files';
-  import { embedded } from '../core/embed';
-  import { collectNotes, syncShares, hasVault } from '../core/service';
+  import { stale } from '../reader/reread';
   import { isTauri } from '../core/shell';
-  import { stale, reread } from '../reader/reread';
-  /** A cover image keeps its whole picture: one near the frame's shape (2:3) fills it,
-   *  one far from it (a square, a wide one) is shown whole on its own edge colour,
-   *  taken once from the image (nothing is computed as the shelf scrolls). */
-  function fitImage(img: HTMLImageElement) {
-    const done = () => {
-      const a = img.naturalWidth / Math.max(1, img.naturalHeight);
-      if (!a || Math.abs(a / (2 / 3) - 1) < 0.14) return;
-      const c = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
-      if (!c) return;
-      c.canvas.width = 8; c.canvas.height = 8;
-      c.drawImage(img, 0, 0, 8, 8);
-      const d = c.getImageData(0, 0, 8, 8).data;
-      let r = 0, g = 0, b = 0, n = 0;
-      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-        if (x > 0 && x < 7 && y > 0 && y < 7) continue;
-        const o = (y * 8 + x) * 4; r += d[o]; g += d[o + 1]; b += d[o + 2]; n++;
-      }
-      const box = img.parentElement!;
-      box.style.background = `rgb(${r / n | 0} ${g / n | 0} ${b / n | 0})`;
-      box.classList.add('whole');
-    };
-    // it fades in as it arrives (one already decoded is simply there)
-    if (img.complete && img.naturalWidth) { img.classList.add('in', 'now'); done(); }
-    else img.addEventListener('load', () => { img.classList.add('in'); done(); }, { once: true });
-  }
-  /** A generated cover's title is set as large as fits: its longest word within the
-   *  width, and the whole cover within its height (a title like "Superintelligence"
-   *  otherwise runs off the edge). Fitted again when the cover changes size. */
-  function fitTitle(cover: HTMLElement) {
-    const title = cover.querySelector<HTMLElement>('.c-title')!;
-    // (the cover's scroll size would count its shadow, which lies outside it: measure what
-    // the content takes instead)
-    const tall = () => {
-      const cs = getComputedStyle(cover), r = cover.getBoundingClientRect();
-      const last = cover.lastElementChild!.getBoundingClientRect(), first = cover.firstElementChild!.getBoundingClientRect();
-      return last.bottom - first.top > r.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) + 0.5;
-    };
-    const fit = () => {
-      title.style.fontSize = ''; title.style.webkitLineClamp = '';
-      let px = parseFloat(getComputedStyle(title).fontSize);
-      while (px > 11 && (title.scrollWidth > title.clientWidth + 0.5 || tall())) {
-        px -= 0.5;
-        title.style.fontSize = px + 'px';
-      }
-      // a title too long even then: as many lines as there is room for, ending in "…"
-      if (tall()) {
-        const lh = parseFloat(getComputedStyle(title).lineHeight) || px * 1.12;
-        let n = Math.max(1, Math.round(title.getBoundingClientRect().height / lh));
-        while (n > 1 && tall()) title.style.webkitLineClamp = String(--n);
-      }
-    };
-    const ro = new ResizeObserver(fit);
-    ro.observe(cover);
-    document.fonts.ready.then(fit);
-    return { destroy: () => ro.disconnect() };
-  }
-
+  import { isIOS, isInstalled } from '../core/env';
+  import { removeBook, keepLibrary, collectSoon, rereadStale } from './library';
   import type { Core, LibEntry } from '../core/types';
   import { kv } from '../core/kv';
-  import { ui, toast, type Reader } from '../reader/reader.svelte';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui, toast } from '../state.svelte';
   import Sheet from './Sheet.svelte';
   import Help from './Help.svelte';
   import LibraryNotebook from './LibraryNotebook.svelte';
   import LibraryResults from './LibraryResults.svelte';
   import { fold } from '../reader/notebook';
   import { hint } from '../reader/hints';
-  import { parseNotes, targetOf, receive, type NotesFile } from '../reader/feedback';
+  import { takeNotes as takeNotesIn } from '../reader/intake';
   import { isNotesMarkdown } from '../reader/notesmd';
   import { isWebAnno } from '../reader/webanno';
-  import { isMine, restoreOwn, restored } from '../reader/restore';
-  import { SMART, shelves, loadShelves, onShelf, createShelf, renameShelf, deleteShelf, toggleShelf, addToShelf, forgetBook } from './shelves.svelte';
+  import { SMART, shelves, loadShelves, onShelf, createShelf, renameShelf, deleteShelf, toggleShelf, addToShelf } from './shelves.svelte';
 
   let { core, reader, hidden }: { core: Core; reader: Reader; hidden: boolean } = $props();
   let books: LibEntry[] = $state([]);
@@ -163,74 +107,17 @@
     const list = await core.library();
     loadCovers(list);
     books = list.sort((a, z) => (kv.get<number>('opened.' + z.id, z.added) - kv.get<number>('opened.' + a.id, a.added)));
-    rereadStale(list);
-    collectSoon();
+    rereadStale(core, list, () => reader.book?.id);
+    collectSoon(core, id => books.find(b => b.id === id)?.title ?? 'a book');
   }
 
-  /** The library kept for good: a browser may clear a site's storage when it is short of
-   *  room, and Safari clears it after some days unvisited unless the site is installed.
-   *  Asked once a book of one's own is added (Firefox asks the person; Chrome and Safari
-   *  decide by themselves); where it is not granted in Safari, said once how to keep it. */
-  let keepAsked = false;
-  async function keepLibrary() {
-    if (keepAsked || isTauri || embedded || !navigator.storage?.persist) return;
-    keepAsked = true;
-    if (await navigator.storage.persisted().catch(() => false)) return;
-    if (await navigator.storage.persist().catch(() => false)) return;
-    const safari = /Safari\//.test(navigator.userAgent) && !/Chrome\/|Chromium\/|CriOS|FxiOS|EdgiOS|Android/.test(navigator.userAgent);
-    const installed = matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    if (!safari || installed) return;
-    const touch = document.documentElement.classList.contains('touchui');
-    setTimeout(() => hint(touch ? 'touch-keep' : 'keep', touch
-      ? 'Safari may clear this library if Volumen is not opened for a week or so. To keep it: Share, then Add to Home Screen; or back it up, at the foot of the library.'
-      : 'Safari may clear this library if Volumen is not opened for a week or so. To keep it: File, then Add to Dock; or back it up, at the foot of the library.', 9000), 4000);
-  }
-
-  /** Readers' notes on books shared through the service, fetched when the library shows
-   *  (at most every few minutes; only for a writer with shared books). */
-  let collectedAt = 0;
-  async function collectSoon() {
-    if (Date.now() - collectedAt < 300_000 || (!kv.keys('share.').length && !hasVault())) return;
-    collectedAt = Date.now();
-    // shares made on the writer's other devices (their vault) first
-    const added = await syncShares(core).catch(() => 0);
-    if (added) { toast(`${added} shared book${added === 1 ? '' : 's'} from your other devices added to this library.`, 5200); ui.libVersion++; }
-    const got = await collectNotes().catch(() => []);
-    if (!got.length) return;
-    const by = new Map<string, string[]>();
-    for (const g of got) by.set(g.book, [...(by.get(g.book) ?? []), g.from]);
-    const said = [...by].map(([id, from]) => `${from.join(', ')} on “${books.find(b => b.id === id)?.title ?? 'a book'}”`);
-    toast(`New notes from your readers: ${said.join('; ')}. Open the book to see them.`, 6400);
-    ui.libVersion++;
-  }
-
-  /** Books read by an earlier importer are read again from their kept files, one at a
-   *  time, once a session, never the one open (reader/reread.ts). */
-  let rereading = false, reread_done = false;
-  async function rereadStale(list: LibEntry[]) {
-    if (rereading || reread_done) return;
-    const todo = list.filter(b => stale(b) && b.source);
-    if (!todo.length) return;
-    rereading = true;
-    let n = 0;
-    for (const b of todo) {
-      if (reader.book?.id === b.id) continue;
-      try { await reread(core, b); n++; } catch { /* left as it was: tried again next session */ }
-      if (reader.book?.id) break;
-    }
-    if (!reader.book) core.idle?.();
-    rereading = false; reread_done = true;
-    if (n) { toast(n === 1 ? 'A book was read again with what Volumen now understands of it.' : `${n} books were read again with what Volumen now understands of them.`, 4200); ui.libVersion++; }
-  }
   $effect(() => { ui.libVersion; load().then(() => { if (!hidden) restoreFocus(); }); });
   $effect(() => { if (!hidden) requestAnimationFrame(restoreFocus); });
   // with a few books, how to find things among them
   // on an iPhone or iPad, in Safari, not yet on the Home Screen: how to put it there, once
   // (volumen.page sends people here to do it, so the library is what is installed)
   $effect(() => {
-    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-    const home = matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    if (!hidden && ios && !home && !isTauri) setTimeout(() => !hidden && hint('touch-install', 'To keep Volumen on your Home Screen: tap Share, then Add to Home Screen. It then opens full screen and reads offline.', 8000), 1500);
+    if (!hidden && isIOS && !isInstalled() && !isTauri) setTimeout(() => !hidden && hint('touch-install', 'To keep Volumen on your Home Screen: tap Share, then Add to Home Screen. It then opens full screen and reads offline.', 8000), 1500);
   });
   $effect(() => { if (!hidden && books.length >= 3) setTimeout(() => !hidden && hint('lib-search', '/ searches titles and the text of every book. [ ] switch shelves; A puts a book in a collection.'), 1200); });
 
@@ -263,39 +150,13 @@
     reader.open(b.id);
   }
 
-  /** Another reader's notes: kept against their book, shown when it opens. */
-  /** A notes file (JSON, or Markdown exported from a notebook): one's own notes are put
-   *  back on their books; another reader's are kept as feedback on theirs. */
+  /** Notes files (JSON, Markdown exported from a notebook, Web Annotations): one's own
+   *  notes are put back on their books; another reader's are kept as feedback on theirs. */
   async function takeNotes(texts: string[], names: string[] = []) {
-    // every file read first: a folder from a dozen readers is one import, said once
-    const notOk: string[] = [];
-    const all: NotesFile[] = [];
-    texts.forEach((t, i) => { const r = parseNotes(t); if (typeof r === 'string') notOk.push(names[i] ?? r); else all.push(...r); });
-    const said: string[] = [];
-    const theirs = new Map<string, { title: string; readers: Map<string, string>; notes: number }>();
-    const missing = new Map<string, number>();
-    for (const f of all) {
-      const t = targetOf(f, books);
-      if (!t) { missing.set(f.book.title, (missing.get(f.book.title) ?? 0) + 1); continue; }
-      if (isMine(f)) {
-        try { said.push(restored(t.title, await restoreOwn(f, t.id, core))); }
-        catch (e) { said.push(`Your notes on “${t.title}” could not be put back: ${(e as Error).message}`); }
-        // (that read the book in the engine; no book is open here)
-        core.idle?.();
-        continue;
-      }
-      if (!receive(f, t.id)) continue;
-      const b = theirs.get(t.id) ?? { title: t.title, readers: new Map<string, string>(), notes: 0 };
-      b.readers.set(f.from.id, f.from.name || 'a reader'); b.notes += f.notes.length;
-      theirs.set(t.id, b);
-    }
-    const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
-    for (const b of theirs.values()) said.push(`Notes from ${b.readers.size === 1 ? [...b.readers.values()][0] : n(b.readers.size, 'reader', 'readers')} on “${b.title}”: ${n(b.notes, 'note', 'notes')}. Open the book to see them beside the text.`);
-    for (const [title, k] of missing) said.push(`${n(k, 'file is', 'files are')} for “${title}”, which is not in your library: add the book, then the notes again.`);
-    if (notOk.length) said.push(`${n(notOk.length, 'file was', 'files were')} not notes${notOk.length <= 3 ? ` (${notOk.join(', ')})` : ''}.`);
-    if (!said.length) said.push('These notes are here already.');
-    const m = said.join(' ');
-    toast(m, Math.max(5200, m.length * 60));
+    const { said } = await takeNotesIn(core, texts, books, undefined, names);
+    // (putting one's own notes back read their books in the engine; none is open here)
+    if (!reader.book) core.idle?.();
+    toast(said, Math.max(5200, said.length * 60));
     ui.libVersion++;
   }
 
@@ -365,9 +226,7 @@
   }
 
   async function remove(b: LibEntry) {
-    await core.remove(b.id);
-    for (const k of ['pos.', 'marks.', 'seen.', 'far.', 'progress.', 'lines.', 'session.', 'state.', 'opened.', 'nb.']) kv.del(k + b.id);
-    forgetBook(b.id);
+    await removeBook(core, b.id);
     removing = null;
     toast('Removed from the library.');
     await load();

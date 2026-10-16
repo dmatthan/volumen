@@ -11,7 +11,7 @@ use vol_model::{Block, Kind, Meta, Section, SectionKind, TextBuilder, fnv64, sty
 pub(crate) fn decode(bytes: &[u8]) -> Option<String> {
     let s = if let Some(b) = bytes.strip_prefix(b"\xff\xfe").or_else(|| bytes.strip_prefix(b"\xfe\xff")) {
         let le = bytes[0] == 0xff;
-        let u: Vec<u16> = b.chunks_exact(2).map(|c| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) }).collect();
+        let u: Vec<u16> = b.as_chunks::<2>().0.iter().map(|c| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) }).collect();
         String::from_utf16_lossy(&u)
     } else {
         let b = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes);
@@ -101,14 +101,12 @@ pub fn parse(bytes: &[u8], name: &str) -> Result<crate::Book, Error> {
         let p = &paras[i];
         if is_head(p) {
             let mut h = heads::parse(p);
-            if h.title.is_empty() {
-                if let Some(nx) = paras.get(i + 1) {
-                    if nx.len() < 80 && !nx.ends_with(['.', '!', '?', '”', '"']) && !is_head(nx) {
+            if h.title.is_empty()
+                && let Some(nx) = paras.get(i + 1)
+                    && nx.len() < 80 && !nx.ends_with(['.', '!', '?', '”', '"']) && !is_head(nx) {
                         h.title = heads::tidy(&smart_quotes(nx));
                         i += 1;
                     }
-                }
-            }
             let n = sections.len() + 1;
             sections.push(Section {
                 kind: SectionKind::Chapter,

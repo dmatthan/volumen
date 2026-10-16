@@ -508,11 +508,10 @@ impl TextBuilder {
     pub fn newline(&mut self) {
         while self.text.ends_with(' ') {
             self.text.pop();
-            if let Some(r) = self.runs.last_mut() {
-                if r.end as usize > self.text.len() {
+            if let Some(r) = self.runs.last_mut()
+                && r.end as usize > self.text.len() {
                     r.end = self.text.len() as u32;
                 }
-            }
         }
         if !self.text.is_empty() && !self.text.ends_with('\n') {
             self.text.push('\n');
@@ -547,11 +546,10 @@ impl TextBuilder {
     fn raw(&mut self, s: &str, style: u8) {
         let start = self.text.len() as u32;
         // a link starts at its first text, not at the space set before it
-        if let Some((st @ None, _)) = self.open_link.as_mut() {
-            if s != " " {
+        if let Some((st @ None, _)) = self.open_link.as_mut()
+            && s != " " {
                 *st = Some(start);
             }
-        }
         self.text.push_str(s);
         let end = self.text.len() as u32;
         if style == 0 {

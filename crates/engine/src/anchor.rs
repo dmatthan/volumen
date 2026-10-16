@@ -365,8 +365,8 @@ impl<'a> Anchorer<'a> {
         // (best first; equal ones in reading order, so the outcome never depends on the
         // order a hash map hands them over)
         cands.sort_by(|x, y| y.0.total_cmp(&x.0).then(x.1.n.cmp(&y.1.n)));
-        if let Some(&(top, ..)) = cands.first() {
-            if top >= 0.6 {
+        if let Some(&(top, ..)) = cands.first()
+            && top >= 0.6 {
                 // the stretches close to the best by words are told apart by their
                 // surroundings (and place): the one taken must agree well, and clearly
                 // better than the rest unless it is the only one close
@@ -382,7 +382,6 @@ impl<'a> Anchorer<'a> {
                     return Placed { key: hex(f.key), s: f.map[i], e: f.map[j], how: How::Changed };
                 }
             }
-        }
         Placed { key: a.key.clone(), s: a.s, e: a.e, how: How::Lost }
     }
 }

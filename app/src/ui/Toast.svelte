@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ui } from '../reader/reader.svelte';
+  import { ui } from '../state.svelte';
 </script>
 
 <div class="toast lift r12" class:show={ui.toastOn} role="status" aria-live="polite">{ui.toast}</div>

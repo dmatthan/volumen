@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { ui, type Reader } from '../reader/reader.svelte';
+  import { type Reader } from '../reader/reader.svelte';
+  import { ui } from '../state.svelte';
   import { reduceMotion } from '../reader/settings.svelte';
+  import { RICH } from '../reader/rich';
 
   /** An image shown large. It grows from where it sits on the page to the middle of the
    *  window over a darkened, vignetted page, and goes back the same way. Only transform and
@@ -12,9 +14,9 @@
   const [iw, ih, alt, mime] = reader.book!.images[ui.lightbox!.i] ?? [1, 1, '', ''];
   // a rich block (reader/rich.ts) is ink on transparent, shown on a card of paper; its
   // description is all its text, not a caption
-  const rich = mime === 'application/xhtml+xml';
+  const rich = mime === RICH;
   // svelte-ignore state_referenced_locally
-  const src = reader.imageURL(ui.lightbox!.i);
+  const src = reader.images.src(ui.lightbox!.i);
   let shown = $state(false);
   let leaving = $state(false);
 

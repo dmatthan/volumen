@@ -1,10 +1,7 @@
-import type { BookData } from '../core/types';
+import type { BookData, Core } from '../core/types';
 import { kv } from '../core/kv';
-import type { Core } from '../core/types';
+import { readingOrder, shareOf, type KeyIndex } from '../core/book';
 
-/** A highlight (optionally with a note) over part of one block. Offsets are UTF-16 into
- *  the block's text; the quote and its context let it find its text again if the book is
- *  re-imported and the blocks shift. */
 /** One-tap reactions a reader of a manuscript gives a passage (D6), in the order of their
  *  keys in the chip (5 to 8). */
 export const REACTIONS = ['loved', 'confused', 'slow', 'typo'] as const;
@@ -12,6 +9,9 @@ export type Reaction = (typeof REACTIONS)[number];
 export const REACTION_LABEL: Record<Reaction, string> = { loved: 'Loved this', confused: 'Confused here', slow: 'Slow here', typo: 'A typo' };
 export const isReaction = (r: unknown): r is Reaction => REACTIONS.includes(r as Reaction);
 
+/** A highlight (optionally with a note) over part of one block. Offsets are UTF-16 into
+ *  the block's text; the quote and its context let it find its text again if the book is
+ *  re-imported and the blocks shift. */
 export interface Annotation {
   id: string;
   key: string;
@@ -43,7 +43,7 @@ export class Annotations {
   /** Annotations per block key, in order. */
   private byKey = new Map<string, Annotation[]>();
 
-  constructor(private book: BookData, private keyIndex: Map<string, [number, number]>) {
+  constructor(private book: BookData, private keyIndex: KeyIndex) {
     this.list = kv.get<Annotation[]>('ann.' + book.id, []);
     this.index();
   }
@@ -51,15 +51,6 @@ export class Annotations {
   private block(key: string) {
     const hit = this.keyIndex.get(key);
     return hit ? this.book.sections[hit[0]].blocks[hit[1]] : null;
-  }
-
-  /** How far through the book a block is (0–1). */
-  private posOf(key: string) {
-    const hit = this.keyIndex.get(key);
-    if (!hit) return undefined;
-    let n = 0, at = 0;
-    this.book.sections.forEach((s, si) => { if (si < hit[0]) at += s.blocks.length; n += s.blocks.length; });
-    return (at + hit[1]) / Math.max(1, n);
   }
 
   /** Checks every annotation still covers its words; those that do not are placed by the
@@ -138,7 +129,7 @@ export class Annotations {
     const a: Annotation = {
       id: now.toString(36) + Math.random().toString(36).slice(2, 6), key, s, e,
       quote: b.t.slice(s, e), prefix: b.t.slice(Math.max(0, s - CTX), s), suffix: b.t.slice(e, e + CTX),
-      color, note, created: now, updated: now, pos: this.posOf(key),
+      color, note, created: now, updated: now, pos: shareOf(this.book, this.keyIndex, key),
     };
     this.list.push(a);
     this.save();
@@ -159,7 +150,7 @@ export class Annotations {
 
   /** Reading order: section, block, offset. */
   ordered(): Annotation[] {
-    const pos = (a: Annotation) => { const h = this.keyIndex.get(a.key); return h ? h[0] * 1e9 + h[1] * 1e4 : 9e15; };
-    return [...this.list].sort((a, b) => pos(a) - pos(b) || a.s - b.s);
+    const pos = (a: Annotation) => { const h = this.keyIndex.get(a.key); return h ? readingOrder(h[0], h[1], a.s) : Infinity; };
+    return [...this.list].sort((a, b) => pos(a) - pos(b));
   }
 }

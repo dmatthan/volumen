@@ -1,5 +1,5 @@
 /** The families the app ships (assets/fonts, served at /fonts). The desktop shell embeds
- *  the same files (src-tauri/src/main.rs), and fonts.css declares them for the webview;
+ *  the same files (src-tauri/src/fonts.rs), and fonts.css declares them for the webview;
  *  keep them in step. Each file is a core (Latin, punctuation) with an extension beside it,
  *  `<file>.ext.ttf`, the rest of the font: the engine knows it as the family `<name>~ext`
  *  (scripts/subset-fonts.py writes both, and fonts.css). */
