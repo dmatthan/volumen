@@ -44,3 +44,11 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.vol-model]
 opt-level = 3
+
+# clippy as a gate (scripts/lint.sh, -D warnings), less three lints this code disagrees
+# with: wide tuple types are named where they are used, index loops that read two
+# arrays in step stay index loops, and Engine has no meaningful Default
+[workspace.lints.clippy]
+type_complexity = "allow"
+needless_range_loop = "allow"
+new_without_default = "allow"

@@ -70,6 +70,25 @@ pub struct Link {
 
 /// Saved books start with this tag and a format number; the first format had neither.
 /// 2 added notes, links and images; 3 tables.
+/// `%xx` escapes (a URL's path, a header) as the text they stand for; anything that is
+/// not an escape, or not two hex digits, is kept as it is.
+pub fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        let hex = (b[i] == b'%').then(|| b.get(i + 1..i + 3)).flatten().and_then(|h| std::str::from_utf8(h).ok()).and_then(|h| u8::from_str_radix(h, 16).ok());
+        if let Some(v) = hex {
+            out.push(v);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 pub const SAVE_MAGIC: &[u8; 4] = b"VOL\x03";
 const SAVE_MAGIC_V2: &[u8; 4] = b"VOL\x02";
 
@@ -88,6 +107,39 @@ fn on_chars(text: &str, start: u32, end: u32) -> Option<(u32, u32)> {
 }
 
 impl Book {
+    /// Keeps only chapters `from` to `to` (counted from 1), front matter and all else
+    /// left out: an extract, a sample.
+    pub fn keep_chapters(&mut self, from: usize, to: usize) -> Result<(), String> {
+        let mut n = 0;
+        self.sections.retain(|s| {
+            if s.kind != SectionKind::Chapter {
+                return false;
+            }
+            n += 1;
+            n >= from && n <= to
+        });
+        if self.sections.is_empty() {
+            return Err(format!("the book has no chapter {from}"));
+        }
+        Ok(())
+    }
+
+    /// Every piece of the book's text a reader may see: its title, each section's title
+    /// and label, every block, every note.
+    pub fn each_text(&self, mut f: impl FnMut(&str)) {
+        f(&self.meta.title);
+        for s in &self.sections {
+            f(&s.title);
+            f(&s.label);
+            for b in &s.blocks {
+                f(&b.text);
+            }
+        }
+        for n in &self.notes {
+            f(&n.text);
+        }
+    }
+
     /// Puts every style run and link back onto its block's characters. Importers keep
     /// them there; this makes a mistake in one a matter of a misplaced italic, not of a
     /// slice through the middle of a character (a crash, and on the web a dead engine).
@@ -133,37 +185,48 @@ impl Book {
             return postcard::from_bytes(rest).map_err(|e| e.to_string());
         }
         if let Some(rest) = bytes.strip_prefix(SAVE_MAGIC_V2) {
-            let v2: v2::Book = postcard::from_bytes(rest).map_err(|e| e.to_string())?;
+            let v2: earlier::V2 = postcard::from_bytes(rest).map_err(|e| e.to_string())?;
             return Ok(v2.into());
         }
-        let v1: v1::Book = postcard::from_bytes(bytes).map_err(|e| e.to_string())?;
+        let v1: earlier::V1 = postcard::from_bytes(bytes).map_err(|e| e.to_string())?;
         Ok(v1.into())
     }
 }
 
-/// The saved form before tables.
-mod v2 {
+/// Earlier saved forms, read into this one: before tables (v2), and before notes, links
+/// and images (v1). What they lack comes with the next import of the book's file.
+mod earlier {
     use serde::Deserialize;
 
+    // (written only by the test below, which checks they are still read)
     #[derive(Deserialize)]
-    pub struct Book {
-        id: String,
-        meta: super::Meta,
-        sections: Vec<Section>,
-        notes: Vec<super::Note>,
-        images: Vec<super::Image>,
-    }
-    #[derive(Deserialize)]
-    struct Section {
+    #[cfg_attr(test, derive(serde::Serialize))]
+    struct Section<B> {
         kind: super::SectionKind,
         part: String,
         label: String,
         num: String,
         title: String,
-        blocks: Vec<Block>,
+        blocks: Vec<B>,
+    }
+    impl<B: Into<super::Block>> From<Section<B>> for super::Section {
+        fn from(s: Section<B>) -> Self {
+            super::Section { kind: s.kind, part: s.part, label: s.label, num: s.num, title: s.title, blocks: s.blocks.into_iter().map(Into::into).collect() }
+        }
+    }
+
+    #[derive(Deserialize)]
+    #[cfg_attr(test, derive(serde::Serialize))]
+    pub struct V2 {
+        id: String,
+        meta: super::Meta,
+        sections: Vec<Section<V2Block>>,
+        notes: Vec<super::Note>,
+        images: Vec<super::Image>,
     }
     #[derive(Deserialize)]
-    struct Block {
+    #[cfg_attr(test, derive(serde::Serialize))]
+    struct V2Block {
         key: u64,
         kind: super::Kind,
         text: String,
@@ -171,83 +234,57 @@ mod v2 {
         links: Vec<super::Link>,
         image: Option<u32>,
     }
-    impl From<Book> for super::Book {
-        fn from(b: Book) -> Self {
-            super::Book {
-                id: b.id,
-                meta: b.meta,
-                sections: b
-                    .sections
-                    .into_iter()
-                    .map(|s| super::Section {
-                        kind: s.kind,
-                        part: s.part,
-                        label: s.label,
-                        num: s.num,
-                        title: s.title,
-                        blocks: s
-                            .blocks
-                            .into_iter()
-                            .map(|b| super::Block { links: b.links, image: b.image, ..super::Block::new(b.key, b.kind, b.text, b.runs) })
-                            .collect(),
-                    })
-                    .collect(),
-                notes: b.notes,
-                images: b.images,
-                cover: None,
-            }
+    impl From<V2Block> for super::Block {
+        fn from(b: V2Block) -> Self {
+            super::Block { links: b.links, image: b.image, ..super::Block::new(b.key, b.kind, b.text, b.runs) }
         }
     }
-}
-
-/// The saved form before notes, links and images.
-mod v1 {
-    use serde::Deserialize;
+    impl From<V2> for super::Book {
+        fn from(b: V2) -> Self {
+            super::Book { id: b.id, meta: b.meta, sections: b.sections.into_iter().map(Into::into).collect(), notes: b.notes, images: b.images, cover: None }
+        }
+    }
 
     #[derive(Deserialize)]
-    pub struct Book {
+    #[cfg_attr(test, derive(serde::Serialize))]
+    pub struct V1 {
         id: String,
         meta: super::Meta,
-        sections: Vec<Section>,
+        sections: Vec<Section<V1Block>>,
     }
     #[derive(Deserialize)]
-    struct Section {
-        kind: super::SectionKind,
-        part: String,
-        label: String,
-        num: String,
-        title: String,
-        blocks: Vec<Block>,
-    }
-    #[derive(Deserialize)]
-    struct Block {
+    #[cfg_attr(test, derive(serde::Serialize))]
+    struct V1Block {
         key: u64,
         kind: super::Kind,
         text: String,
         runs: Vec<super::Run>,
     }
-    impl From<Book> for super::Book {
-        fn from(b: Book) -> Self {
-            super::Book {
-                id: b.id,
-                meta: b.meta,
-                sections: b
-                    .sections
-                    .into_iter()
-                    .map(|s| super::Section {
-                        kind: s.kind,
-                        part: s.part,
-                        label: s.label,
-                        num: s.num,
-                        title: s.title,
-                        blocks: s.blocks.into_iter().map(|b| super::Block::new(b.key, b.kind, b.text, b.runs)).collect(),
-                    })
-                    .collect(),
-                notes: vec![],
-                images: vec![],
-                cover: None,
-            }
+    impl From<V1Block> for super::Block {
+        fn from(b: V1Block) -> Self {
+            super::Block::new(b.key, b.kind, b.text, b.runs)
         }
+    }
+    impl From<V1> for super::Book {
+        fn from(b: V1) -> Self {
+            super::Book { id: b.id, meta: b.meta, sections: b.sections.into_iter().map(Into::into).collect(), notes: vec![], images: vec![], cover: None }
+        }
+    }
+
+    #[test]
+    fn books_saved_in_earlier_forms_are_read() {
+        fn section<B>(blocks: Vec<B>) -> Section<B> {
+            Section { kind: super::SectionKind::Chapter, part: String::new(), label: "I".into(), num: "1".into(), title: "One".into(), blocks }
+        }
+        let meta = super::Meta { title: "Old".into(), ..Default::default() };
+        let v1 = V1 { id: "a".into(), meta: meta.clone(), sections: vec![section(vec![V1Block { key: 7, kind: super::Kind::P, text: "First.".into(), runs: vec![] }])] };
+        let b = super::Book::restore(&postcard::to_allocvec(&v1).unwrap()).unwrap();
+        assert_eq!((b.sections[0].title.as_str(), b.sections[0].blocks[0].text.as_str(), b.sections[0].blocks[0].key), ("One", "First.", 7));
+        let v2 = V2 { id: "b".into(), meta, sections: vec![section(vec![V2Block { key: 9, kind: super::Kind::P, text: "Second.".into(), runs: vec![], links: vec![], image: Some(0) }])], notes: vec![], images: vec![] };
+        let mut bytes = super::SAVE_MAGIC_V2.to_vec();
+        bytes.extend(postcard::to_allocvec(&v2).unwrap());
+        let b = super::Book::restore(&bytes).unwrap();
+        assert_eq!((b.id.as_str(), b.sections[0].blocks[0].text.as_str(), b.sections[0].blocks[0].image), ("b", "Second.", Some(0)));
     }
 }
 
@@ -820,5 +857,18 @@ mod words_tests {
         assert_eq!(words("第1章 吾輩は猫である。"), 6);
         // Thai: 10 letters, two words' worth
         assert_eq!(words("สวัสดีครับ"), 2);
+    }
+}
+
+#[cfg(test)]
+mod percent_tests {
+    #[test]
+    fn escapes_are_decoded_and_anything_else_is_kept() {
+        assert_eq!(super::percent_decode("ch%201.xhtml"), "ch 1.xhtml");
+        assert_eq!(super::percent_decode("caf%C3%A9"), "café");
+        // not an escape: a lone %, a % at the end, a % before a character of several bytes
+        assert_eq!(super::percent_decode("100% sure, 5%"), "100% sure, 5%");
+        assert_eq!(super::percent_decode("100%€x"), "100%€x");
+        assert_eq!(super::percent_decode("%zz%4"), "%zz%4");
     }
 }

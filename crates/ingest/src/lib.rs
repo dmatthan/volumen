@@ -21,7 +21,7 @@ pub use vol_model::Book;
 /// 4: writing without spaces (Chinese, Japanese) counted fairly, so its short chapters
 /// are not taken for title pages; a book of pictures keeps its pages.
 pub const VERSION: u32 = 4;
-use vol_model::{Meta, Section};
+use vol_model::{Block, Kind, Meta, Section, SectionKind};
 
 #[derive(Debug)]
 pub enum Error {
@@ -124,4 +124,22 @@ fn is_docx(bytes: &[u8]) -> bool {
 
 pub(crate) fn finish_book(source: &[u8], meta: Meta, sections: Vec<Section>) -> Book {
     Book { id: format!("{:016x}", vol_model::fnv64(source)), meta, sections, notes: vec![], images: vec![], cover: None }
+}
+
+/// One long unbroken text (no headings to cut it by) in parts of about 2,600 words, named
+/// "Part 1", "Part 2"…, a part never starting on a scene break; or, not `cut`, as one
+/// chapter.
+pub(crate) fn parts(blocks: Vec<Block>, cut: bool) -> Vec<Section> {
+    let mut out: Vec<Section> = Vec::new();
+    let mut w = 0;
+    for b in blocks {
+        if out.is_empty() || (cut && w > 2600 && b.kind != Kind::Break) {
+            let n = out.len() + 1;
+            out.push(Section { kind: SectionKind::Chapter, part: String::new(), label: if cut { format!("Part {n}") } else { String::new() }, num: n.to_string(), title: String::new(), blocks: Vec::new() });
+            w = 0;
+        }
+        w += vol_model::words(&b.text);
+        out.last_mut().unwrap().blocks.push(b);
+    }
+    out
 }

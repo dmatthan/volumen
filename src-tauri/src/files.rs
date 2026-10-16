@@ -1,7 +1,8 @@
 //! Files in and out: the library's picker (books, notes, backups), saving where the reader
 //! chooses, and the conversions that go from a file to a file (an extract as an EPUB,
 //! readers' notes as Word comments).
-use crate::{App, Held, Res, add, guarded, percent_decode};
+use crate::{App, Held, Res, add, guarded};
+use vol_engine::percent_decode;
 use crate::store::LibEntry;
 use tauri::State;
 use tauri::ipc::{Request, Response};

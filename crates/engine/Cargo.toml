@@ -17,3 +17,6 @@ vol-press = { version = "0.1.0", path = "../press" }
 
 [features]
 parallel = ["dep:rayon"]
+
+[lints]
+workspace = true

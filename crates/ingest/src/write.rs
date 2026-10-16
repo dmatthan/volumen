@@ -239,17 +239,7 @@ pub fn epub(book: &Book) -> Result<Vec<u8>, String> {
 /// Chapters `from` to `to` (counted from 1) of a file, as an EPUB of their own: a sample.
 pub fn sample(bytes: &[u8], name: &str, from: usize, to: usize) -> Result<Vec<u8>, String> {
     let mut book = crate::any(bytes, name).map_err(|e| e.to_string())?;
-    let mut n = 0;
-    book.sections.retain(|s| {
-        if s.kind != SectionKind::Chapter {
-            return false;
-        }
-        n += 1;
-        n >= from && n <= to
-    });
-    if book.sections.is_empty() {
-        return Err(format!("the book has no chapter {from}"));
-    }
+    book.keep_chapters(from, to)?;
     book.id = format!("{}-sample-{from}-{to}", book.id);
     epub(&book)
 }

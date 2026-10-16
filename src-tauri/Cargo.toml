@@ -19,3 +19,6 @@ fontdb = "0.23"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+
+[lints]
+workspace = true

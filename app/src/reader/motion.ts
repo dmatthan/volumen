@@ -9,14 +9,16 @@
  *
  *   tap     a set (Space) or one column (arrows) on a minimum-jerk curve
  *   cruise  a held key or press: speed eases up to a calm cruise, then on release the
- *           sheet decelerates onto the next boundary ahead
+ *           sheet decelerates onto the next boundary ahead (worked out ahead: `Cruise`)
  *   direct  a trackpad or a drag moves the sheet 1:1; on release it settles on the column
  *           nearest where the hand let go (a flick: the next one that way)
  *
- * A move toward a target is known whole when it starts, so it is also handed to the
- * compositor (`glide`), which draws it at the screen's own rate however often the page
- * gets a frame: Safari gives a page half of them in Low Power Mode, and when hot. The loop
- * still runs, for what follows the sheet (columns built ahead, the running head).
+ * A move toward a target, and a cruise, are known when they start, so they are handed to
+ * the compositor (`glide`), which draws them at the screen's own rate however often the
+ * page gets a frame: Safari gives a page half of them in Low Power Mode, and when hot. The
+ * loop still runs, for what follows the sheet (columns built ahead, the running head),
+ * and reads the move rather than making it. Only the hand (`direct`) is followed frame
+ * by frame: nothing knows ahead where it will go.
  */
 
 /** Seconds for a one-column tap; each extra column in a set adds a little. */
@@ -38,6 +40,20 @@ const INTENT = 0.12;
 const CRUISE_V0 = 1.6, CRUISE_VMAX = 3.2, CRUISE_RAMP_S = 3, CRUISE_LAG_S = 0.2;
 /** After the first ramp, a long hold keeps gathering speed toward this, for long trips. */
 const CRUISE_VFAR = 9, CRUISE_FAR_S = 6;
+/** A cruise is worked out at this many steps a second: between two, the eye cannot tell a
+ *  straight line from the curve, at any frame rate. */
+const CRUISE_HZ = 240;
+/** Seconds into a cruise after which its speed no longer changes (the ramps done, the lag
+ *  caught up to within a hair): from then it is a straight line, to an end of the book. */
+const CRUISE_SETTLED_S = CRUISE_RAMP_S + CRUISE_FAR_S + 1.5;
+/** Keyframes a second, where a move curves: straight lines between them are its curve to
+ *  well under a pixel. */
+const KEYS_HZ = 60;
+/** Times from 0 to `T` seconds, `KEYS_HZ` a second. */
+function keyTimes(T: number): number[] {
+  const n = Math.max(2, Math.ceil(T * KEYS_HZ));
+  return Array.from({ length: n + 1 }, (_, i) => (T * i) / n);
+}
 
 /** The current frame's time. Input arrives mid-frame; trajectories are anchored to the
  *  frame, so the next frame (stamped later) already shows movement and none goes back. */
@@ -64,6 +80,69 @@ class Quintic {
   }
 }
 
+/** A held key's or press's glide, worked out ahead from the state it began in: the speed
+ *  eases up to a calm cruise (faster for a wider set in view) and, held long, gathers
+ *  further for long trips; the sheet follows the speed with a short lag, so the hand never
+ *  feels a jolt. Once the speed has settled it is a straight line; it stops at an end of
+ *  the book. */
+class Cruise {
+  private ps: number[]; private vs: number[]; private as: number[];
+  /** When the sheet reaches an end of the book, seconds in. */
+  end = Infinity;
+
+  constructor(p0: number, v0: number, private dir: number, private scale: number, private lo: number, private hi: number) {
+    this.ps = [p0]; this.vs = [v0]; this.as = [this.accel(0, v0)];
+  }
+
+  private accel(t: number, v: number) {
+    const ramp = Math.min(1, t / CRUISE_RAMP_S), far = Math.min(1, Math.max(0, t - CRUISE_RAMP_S) / CRUISE_FAR_S);
+    const vt = this.dir * this.scale * (CRUISE_V0 + (CRUISE_VMAX - CRUISE_V0) * ramp * ramp * (3 - 2 * ramp) + (CRUISE_VFAR - CRUISE_VMAX) * far * far);
+    return (vt - v) / CRUISE_LAG_S;
+  }
+
+  /** The curved part, worked out once: to the end of the book, or until the speed has
+   *  settled, when the straight line from there finds the end. */
+  private work() {
+    const h = 1 / CRUISE_HZ, n = Math.ceil(CRUISE_SETTLED_S * CRUISE_HZ);
+    for (let i = 0; i < n; i++) {
+      const v = this.vs[i] + this.as[i] * h, p = this.ps[i] + v * h;
+      if (p <= this.lo || p >= this.hi) {
+        this.ps.push(Math.max(this.lo, Math.min(this.hi, p))); this.vs.push(0); this.as.push(0);
+        this.end = (i + 1) * h;
+        return;
+      }
+      this.ps.push(p); this.vs.push(v); this.as.push(this.accel((i + 1) * h, v));
+    }
+    const p = this.ps[n], v = this.vs[n];
+    this.end = this.settled + Math.max(0, ((v > 0 ? this.hi : this.lo) - p) / v);
+  }
+
+  /** When the curved part ends, seconds in. */
+  private get settled() { return (this.ps.length - 1) / CRUISE_HZ; }
+
+  /** Position, speed and acceleration `t` seconds in. */
+  at(t: number): [number, number, number] {
+    if (this.end === Infinity) this.work();
+    t = Math.min(Math.max(0, t), this.end);
+    const last = this.ps.length - 1, v = this.vs[last];
+    if (t >= this.settled) {
+      // the straight line (an end reached in the curve is where it stands)
+      if (!v) return [this.ps[last], 0, 0];
+      return t >= this.end ? [v > 0 ? this.hi : this.lo, 0, 0] : [this.ps[last] + v * (t - this.settled), v, 0];
+    }
+    const x = t * CRUISE_HZ, i = Math.min(Math.floor(x), last - 1), f = x - i;
+    const mix = (a: number[]) => a[i] + (a[i + 1] - a[i]) * f;
+    return [mix(this.ps), mix(this.vs), mix(this.as)];
+  }
+
+  /** Keyframe times for the whole cruise: dense along the curve, then its end. */
+  times(): number[] {
+    if (this.end === Infinity) this.work();
+    const curve = keyTimes(Math.min(this.settled, this.end));
+    return this.end > this.settled ? [...curve, this.end] : curve;
+  }
+}
+
 type Mode = 'rest' | 'traj' | 'cruise' | 'direct';
 
 export interface MotionHost {
@@ -76,8 +155,8 @@ export interface MotionHost {
   /** Called every frame the position changes; `glided` while the compositor draws the
    *  move (else the host puts the sheet there, ending any glide). */
   frame(p: number, v: number, glided?: boolean): void;
-  /** A move from now (`t0`, the frame's time) for `T` seconds, position at `t` seconds. */
-  glide(at: (t: number) => number, T: number, t0: number): void;
+  /** A move from `t0` (a frame's time), position `at(t)` seconds in, as keyframes at `times`. */
+  glide(at: (t: number) => number, times: number[], t0: number): void;
   /** Called once when the sheet comes to rest on a boundary. */
   rest(k: number): void;
 }
@@ -86,10 +165,11 @@ export class Motion {
   p = 0; v = 0; a = 0;
   mode: Mode = 'rest';
   private traj: Quintic | null = null;
+  private cruising: Cruise | null = null;
+  /** When the move began (the document timeline's time). */
   private t0 = 0;
   private raf = 0;
-  private last = 0;
-  private cruiseDir = 0; private cruiseT0 = 0;
+  private cruiseDir = 0;
   private samples: [number, number][] = [];   // direct: (time, position)
 
   constructor(private host: MotionHost) {}
@@ -101,7 +181,9 @@ export class Motion {
   /** Mid-move, the state at this frame's time: the compositor draws the move between the
    *  loop's frames, so a new move starts from where it is, not from the last frame seen. */
   private sync() {
-    if (this.mode === 'traj' && this.traj) [this.p, this.v, this.a] = this.traj.at(Math.max(0, (frameNow() - this.t0) / 1000));
+    const t = Math.max(0, (frameNow() - this.t0) / 1000);
+    if (this.mode === 'traj' && this.traj) [this.p, this.v, this.a] = this.traj.at(t);
+    else if (this.mode === 'cruise' && this.cruising) [this.p, this.v, this.a] = this.cruising.at(t);
   }
 
   private clamp(x: number) { return Math.max(this.host.min(), Math.min(this.host.max(), x)); }
@@ -109,7 +191,7 @@ export class Motion {
   /** Puts the sheet at k at once. */
   jump(k: number) {
     this.stopLoop();
-    this.p = this.clamp(k); this.v = 0; this.a = 0; this.mode = 'rest'; this.traj = null;
+    this.p = this.clamp(k); this.v = 0; this.a = 0; this.mode = 'rest'; this.traj = null; this.cruising = null;
     this.host.frame(this.p, 0);
   }
 
@@ -134,7 +216,8 @@ export class Motion {
     const traj = this.traj = new Quintic(this.p, v0, this.mode === 'rest' ? 0 : this.a, target, T);
     this.t0 = frameNow();
     this.mode = 'traj';
-    this.host.glide(t => traj.at(t)[0], T, this.t0);
+    this.cruising = null;
+    this.host.glide(t => traj.at(t)[0], keyTimes(T), this.t0);
     this.loop();
   }
 
@@ -160,20 +243,25 @@ export class Motion {
     this.toward(target, h <= 1.05 ? TAP_S : Math.min(1.1, 0.38 + 0.11 * h), true);
   }
 
-  /** A held key or press: ease into a cruise. */
+  /** A held key or press: ease into a cruise, from wherever the sheet is going. */
   cruise(d: number) {
     if (this.host.reduced()) return;
     this.sync();
     this.cruiseDir = d;
-    this.cruiseT0 = frameNow();
+    this.cruising = new Cruise(this.p, this.v, d, Math.sqrt(this.host.spread()), this.host.min(), this.host.max());
+    this.t0 = frameNow();
     this.mode = 'cruise';
     this.traj = null;
+    // the whole of it, at once: nothing is handed over while it runs
+    const c = this.cruising;
+    this.host.glide(t => c.at(t)[0], c.times(), this.t0);
     this.loop();
   }
 
   /** End of a cruise: decelerate onto the next boundary ahead. */
   release() {
     if (this.mode !== 'cruise') return;
+    this.sync();
     // brake firmly onto the very next column the sheet can stop at
     const d = this.cruiseDir, v = Math.abs(this.v);
     const stop = (v * v) / (2 * BRAKE);
@@ -199,6 +287,7 @@ export class Motion {
     this.sync();
     this.stopLoop();
     this.traj = null;
+    this.cruising = null;
     this.directFrom = this.p;
     this.mode = 'direct';
     this.a = 0;
@@ -250,11 +339,8 @@ export class Motion {
   /* ---------- the loop ---------- */
   private loop() {
     if (this.raf) return;
-    this.last = frameNow();
     const tick = (now: number) => {
       this.raf = 0;
-      const dt = Math.min(0.05, (now - this.last) / 1000);
-      this.last = now;
       if (this.mode === 'traj' && this.traj) {
         const t = Math.max(0, (now - this.t0) / 1000);
         [this.p, this.v, this.a] = this.traj.at(t);
@@ -265,25 +351,17 @@ export class Motion {
           this.host.rest(k);
           return;
         }
-      } else if (this.mode === 'cruise') {
-        const held = (now - this.cruiseT0) / 1000;
-        const ramp = Math.min(1, held / CRUISE_RAMP_S);
-        const far = Math.min(1, Math.max(0, held - CRUISE_RAMP_S) / CRUISE_FAR_S);
-        // speeds scale with the set in view: three columns glide faster than one
-        const scale = Math.sqrt(this.host.spread());
-        const vt = this.cruiseDir * scale * (CRUISE_V0 + (CRUISE_VMAX - CRUISE_V0) * ramp * ramp * (3 - 2 * ramp) + (CRUISE_VFAR - CRUISE_VMAX) * far * far);
-        const a = (vt - this.v) / CRUISE_LAG_S;
-        this.v += a * dt;
-        this.a = a;
-        this.p += this.v * dt;
-        if (this.p <= this.host.min() || this.p >= this.host.max()) {
-          this.p = this.clamp(this.p);
-          this.mode = 'rest'; this.v = 0; this.a = 0;
+      } else if (this.mode === 'cruise' && this.cruising) {
+        const c = this.cruising, t = Math.max(0, (now - this.t0) / 1000);
+        [this.p, this.v, this.a] = c.at(t);
+        if (t >= c.end) {
+          // an end of the book: settle on its column
+          this.mode = 'rest'; this.cruising = null; this.v = 0; this.a = 0;
           this.host.frame(this.p, 0);
           this.toward(Math.round(this.p), 0.3);
           return;
         }
-        this.host.frame(this.p, this.v);
+        this.host.frame(this.p, this.v, true);
       } else return;
       this.raf = requestAnimationFrame(tick);
     };

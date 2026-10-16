@@ -10,13 +10,18 @@
   const prev = document.activeElement as HTMLElement | null;
 
   onMount(() => {
-    requestAnimationFrame(() => (shown = true));
     const first = sheet.querySelector<HTMLElement>('[data-autofocus]') || sheet.querySelector<HTMLElement>('button, input, [tabindex="0"]');
     first?.focus({ preventScroll: true });
-    // focus that fell out of the sheet (the control it was on went away) still closes it
+    requestAnimationFrame(() => {
+      shown = true;
+      // a sheet opened from another (a book's sheet, then Share) is mounted before the
+      // other gives focus back to what opened it: the focus is taken back here
+      if (!sheet.contains(document.activeElement)) first?.focus({ preventScroll: true });
+    });
+    // focus outside the sheet (the control it was on went away, or the page took it)
+    // still closes it with Escape
     const lost = (e: KeyboardEvent) => {
-      const a = document.activeElement;
-      if (e.key === 'Escape' && (!a || a === document.body)) { e.preventDefault(); onclose(); }
+      if (e.key === 'Escape' && !sheet.contains(document.activeElement)) { e.preventDefault(); onclose(); }
     };
     addEventListener('keydown', lost);
     return () => { removeEventListener('keydown', lost); prev?.focus?.({ preventScroll: true }); };

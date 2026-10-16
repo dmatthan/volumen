@@ -79,7 +79,10 @@ fn block(s: &str, open: usize) -> (&str, usize) {
     (&s[open + 1..], s.len())
 }
 
-fn rules(s: &str, out: &mut Sheet) {
+/// Each style rule of a sheet, as (selector, declarations), in order: statement at-rules
+/// (@import, @charset, @namespace) are passed over, and group rules that apply to a
+/// screen (`@media`, `@supports`) are read into.
+fn each_rule<'a>(s: &'a str, f: &mut impl FnMut(&'a str, &'a str)) {
     let mut at = 0;
     while at < s.len() {
         let rest = s[at..].trim_start();
@@ -88,7 +91,6 @@ fn rules(s: &str, out: &mut Sheet) {
             break;
         }
         let open = rest.find('{');
-        // a statement at-rule (@import, @charset, @namespace): to its ';'
         if rest.starts_with('@') {
             let semi = rest.find(';');
             if semi.is_some_and(|i| open.is_none_or(|o| i < o)) {
@@ -103,13 +105,19 @@ fn rules(s: &str, out: &mut Sheet) {
         if let Some(at_rule) = prelude.strip_prefix('@') {
             let lower = at_rule.to_ascii_lowercase();
             if (lower.starts_with("media") && media_applies(&lower[5..])) || lower.starts_with("supports") {
-                rules(inside, out);
+                each_rule(inside, f);
             }
             continue;
         }
+        f(prelude, inside);
+    }
+}
+
+fn rules(s: &str, out: &mut Sheet) {
+    each_rule(s, &mut |prelude, inside| {
         let props = declarations(inside);
         if !props.any() {
-            continue;
+            return;
         }
         for sel in prelude.split(',') {
             let sel = sel.trim();
@@ -119,7 +127,7 @@ fn rules(s: &str, out: &mut Sheet) {
             }
             out.push((sel.to_string(), props));
         }
-    }
+    });
 }
 
 /// `@media` for screens (or all): not print, not Kindle (`amzn-kf8`, `amzn-mobi`).
@@ -335,37 +343,6 @@ pub(crate) fn apply(st: u8, p: Props) -> u8 {
 /// browser as it is (a rich block: `rich.rs`). Only plain style rules: no at-rules.
 pub(crate) fn raw_rules(src: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    raw(&strip_comments(src), &mut out);
+    each_rule(&strip_comments(src), &mut |prelude, inside| out.push((prelude.to_string(), inside.trim().to_string())));
     out
-}
-
-fn raw(s: &str, out: &mut Vec<(String, String)>) {
-    let mut at = 0;
-    while at < s.len() {
-        let rest = s[at..].trim_start();
-        at = s.len() - rest.len();
-        if rest.is_empty() {
-            break;
-        }
-        let open = rest.find('{');
-        if rest.starts_with('@') {
-            let semi = rest.find(';');
-            if semi.is_some_and(|i| open.is_none_or(|o| i < o)) {
-                at += semi.unwrap() + 1;
-                continue;
-            }
-        }
-        let Some(open) = open else { break };
-        let prelude = rest[..open].trim().to_string();
-        let (inside, end) = block(rest, open);
-        at += end;
-        if let Some(r) = prelude.strip_prefix('@') {
-            let l = r.to_ascii_lowercase();
-            if (l.starts_with("media") && media_applies(&l[5..])) || l.starts_with("supports") {
-                raw(inside, out);
-            }
-            continue;
-        }
-        out.push((prelude, inside.trim().to_string()));
-    }
 }

@@ -4,7 +4,7 @@ import { kv } from '../core/kv';
 import { isTauri } from '../core/shell';
 import { isSafari, isInstalled } from '../core/env';
 import { embedded } from '../core/embed';
-import { syncShares, hasVault } from '../core/service';
+import { syncShares, hasVault, sharedOf, service, withdraw } from '../core/service';
 import { ui, toast } from '../state.svelte';
 import { forgetBookState } from '../reader/bookstate';
 import { collectNotes } from '../reader/intake';
@@ -12,8 +12,12 @@ import { hint } from '../reader/hints';
 import { stale, reread } from '../reader/reread';
 import { forgetBook } from './shelves.svelte';
 
-/** A book gone from the library: its files, what is kept about it, its collections. */
+/** A book gone from the library: its link withdrawn first if it is shared (or readers
+ *  would go on sending notes to it, and the writer's other devices bring it back), then
+ *  its files, what is kept about it, its collections. A link that cannot be withdrawn
+ *  (offline, signed out) leaves the book as it was, and the error says why. */
 export async function removeBook(core: Core, id: string) {
+  if (sharedOf(id) && (await service())) await withdraw(id);
   await core.remove(id);
   forgetBookState(id);
   forgetBook(id);

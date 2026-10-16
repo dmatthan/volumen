@@ -14,6 +14,7 @@
   import { isTauri } from '../core/shell';
   import { isIOS, isInstalled } from '../core/env';
   import { removeBook, keepLibrary, collectSoon, rereadStale } from './library';
+  import { sharedOf } from '../core/service';
   import type { Core, LibEntry } from '../core/types';
   import { kv } from '../core/kv';
   import { type Reader } from '../reader/reader.svelte';
@@ -226,8 +227,9 @@
   }
 
   async function remove(b: LibEntry) {
-    await removeBook(core, b.id);
     removing = null;
+    try { await removeBook(core, b.id); }
+    catch (e) { toast(`“${b.title}” is shared, and its link could not be withdrawn (${(e as Error).message}). It is still in your library.`, 6000); return; }
     toast('Removed from the library.');
     await load();
     restoreFocus();
@@ -408,7 +410,7 @@
   {@const b = removing}
   <Sheet label="Remove a book" onclose={() => { ui.sheet = null; removing = null; }} onkey={e => { if (e.key === 'y' || e.key === 'Enter') { ui.sheet = null; remove(b); return true; } return false; }}>
     <div><p class="eyebrow">Remove from the library</p><h2>{b.title}</h2>
-      <p class="where">Your place, highlights and notes for this book are removed too.</p></div>
+      <p class="where">Your place, highlights and notes for this book are removed too.{#if sharedOf(b.id)} Its link stops working, and readers’ notes waiting for you go with it.{/if}</p></div>
     <div class="acts two">
       <button class="btn" data-autofocus onclick={() => { ui.sheet = null; removing = null; }}>Keep it <kbd>Esc</kbd></button>
       <button class="btn primary" onclick={() => { ui.sheet = null; remove(b); }}>Remove <kbd>Y</kbd></button>

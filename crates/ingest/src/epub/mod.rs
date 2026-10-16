@@ -10,7 +10,7 @@ use crate::{Error, finish_book};
 use scraper::{ElementRef, Html, Node};
 use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
-use vol_model::{Block, Kind, Meta, Section, SectionKind, TextBuilder, fnv64, style};
+use vol_model::{Block, Kind, Meta, Section, SectionKind, TextBuilder, fnv64, percent_decode, style};
 
 mod images;
 mod links;
@@ -102,22 +102,6 @@ fn expand_self_closing(src: &str) -> std::borrow::Cow<'_, str> {
     out.into()
 }
 
-fn percent_decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len()
-            && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
 
 /// Resolves `rel` against the directory of `base` (both zip paths).
 fn resolve(base: &str, rel: &str) -> String {

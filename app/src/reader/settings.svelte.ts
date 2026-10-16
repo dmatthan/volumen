@@ -29,10 +29,4 @@ export function save() {
   for (const k of Object.keys(DEFAULTS) as (keyof Settings)[]) if (settings[k] !== DEFAULTS[k]) (diff as any)[k] = settings[k];
   kv.set('settings', diff);
 }
-export function changed(k: keyof Settings) { return settings[k] !== DEFAULTS[k]; }
-export function reset(k?: keyof Settings) {
-  if (k) (settings as any)[k] = DEFAULTS[k];
-  else Object.assign(settings, DEFAULTS);
-  save();
-}
 export const reduceMotion = () => settings.motion === 'reduce' || matchMedia('(prefers-reduced-motion: reduce)').matches;

@@ -75,7 +75,7 @@ export class Reader {
       spread: () => this.M?.N ?? 1,
       reduced: reduceMotion,
       frame: (p, v, glided) => this.frame(p, v, glided),
-      glide: (at, T, t0) => { if (this.strip) this.surface.glide(at, T, t0); },
+      glide: (at, times, t0) => { if (this.strip) this.surface.glide(at, times, t0); },
       rest: k => this.rest(k),
     });
     this.input = new ReaderInput(this);
@@ -480,6 +480,7 @@ export class Reader {
     ui.chip = null;
     this.cursor.end();
     ui.mapOpen = false; ui.sheet = null;
+    this.surface.setLazy(false);
     document.documentElement.style.removeProperty('--h');
     for (const [, el] of this.surface.rendered()) el.remove();
     this.core.idle?.();
@@ -537,7 +538,7 @@ export class Reader {
   private frame(p: number, v: number, glided = false) {
     if (!this.strip) return;
     if (ui.sideNotes) ui.sideNotes = null;
-    this.surface.place(p, v, glided);
+    this.surface.place(p, v, glided, this.motion.target);
     const k = Math.round(p);
     if (k !== this.shownK) {
       this.shownK = k;

@@ -131,16 +131,7 @@ pub fn parse(bytes: &[u8], name: &str) -> Result<crate::Book, Error> {
     // one long unbroken text: cut it into parts of about 2,600 words
     if sections.len() < 2 && paras.len() > 60 {
         let all: Vec<Block> = sections.drain(..).flat_map(|s| s.blocks).collect();
-        let mut w = 0;
-        for b in all {
-            if sections.is_empty() || w > 2600 {
-                let n = sections.len() + 1;
-                sections.push(Section { kind: SectionKind::Chapter, part: String::new(), label: format!("Part {n}"), num: n.to_string(), title: String::new(), blocks: Vec::new() });
-                w = 0;
-            }
-            w += vol_model::words(&b.text);
-            sections.last_mut().unwrap().blocks.push(b);
-        }
+        sections = crate::parts(all, true);
     }
     if sections.is_empty() {
         return Err(Error::Empty);

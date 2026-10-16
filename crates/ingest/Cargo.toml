@@ -17,3 +17,6 @@ zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2
 zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }
+
+[lints]
+workspace = true

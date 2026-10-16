@@ -126,7 +126,7 @@ impl Engine {
     /// Sizes measured by the reader for rich blocks: `[index, w, h] × n`, flattened.
     #[wasm_bindgen(js_name = setImageSizes)]
     pub fn set_image_sizes(&mut self, id: &str, sizes: &[u32]) -> bool {
-        let s: Vec<(u32, u32, u32)> = sizes.chunks_exact(3).map(|c| (c[0], c[1], c[2])).collect();
+        let s: Vec<(u32, u32, u32)> = sizes.as_chunks::<3>().0.iter().map(|c| (c[0], c[1], c[2])).collect();
         self.0.set_image_sizes(id, &s)
     }
 

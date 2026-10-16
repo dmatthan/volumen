@@ -136,16 +136,7 @@ pub(crate) fn assemble(source: &[u8], name: &str, mut doc: Doc) -> Result<crate:
     if sections.len() == 1 && chap.is_none() {
         let all: Vec<Block> = sections.drain(..).flat_map(|s| s.blocks).collect();
         let long = all.iter().map(|b| vol_model::words(&b.text)).sum::<usize>() > 5000;
-        let mut w = 0;
-        for b in all {
-            if sections.is_empty() || (long && w > 2600 && b.kind != Kind::Break) {
-                let n = sections.len() + 1;
-                sections.push(Section { kind: SectionKind::Chapter, part: String::new(), label: if long { format!("Part {n}") } else { String::new() }, num: n.to_string(), title: String::new(), blocks: Vec::new() });
-                w = 0;
-            }
-            w += vol_model::words(&b.text);
-            sections.last_mut().unwrap().blocks.push(b);
-        }
+        sections = crate::parts(all, long);
     }
     if sections.is_empty() {
         return Err(Error::Empty);

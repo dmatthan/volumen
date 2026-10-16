@@ -160,6 +160,8 @@ export class MapCtl {
     const r = this.r;
     if (ui.mapOpen || !r.strip || ui.sheet) return;
     r.cursor.end();
+    // the page under the map builds nothing at rest (`Surface.prebuild`) while it is up
+    r.surface.setLazy(true);
     ui.mapOpen = true; this.busy = true;
     mp.view = 'strip'; mp.sel = null; mp.here = r.cur; mp.uiIn = false;
     mp.find = !!r.finder.query.trim();

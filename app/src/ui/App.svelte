@@ -10,7 +10,8 @@
   import { settings, save, type Layout } from '../reader/settings.svelte';
   import { themes, readDesktop, setOption, resetOptions, themeById } from '../reader/themes.svelte';
   import { fitStats, resetFitStats, residual } from '../reader/verify';
-  import { shell } from '../core/shell';
+  import { shell, isTauri } from '../core/shell';
+  import { seedSample, type webCore } from '../core/web';
   import { flushKV, kv } from '../core/kv';
   import { setHints } from '../reader/hints';
   import Library from './Library.svelte';
@@ -31,8 +32,7 @@
   // tests drive the reader directly in development builds
   if (import.meta.env.DEV) {
     (window as any).__vol = { reader, map, ui, kv, settings, themes, setOption, resetOptions, themeById, fitStats, resetFitStats, residual, setHints };
-    import('../core/shell').then(async ({ isTauri }) => {
-      if (!isTauri) return;
+    if (isTauri) (async () => {
       const { invoke } = await import('@tauri-apps/api/core');
       if (!(await invoke<boolean>('selftest_mode'))) return;
       setHints(false);
@@ -49,7 +49,7 @@
       try { await (probes[arg] ?? (() => t.selftest(reader, map, log)))(); }
       catch (e) { await log(JSON.stringify({ error: String((e as Error)?.message || e) })); }
       finally { clearTimeout(dog); await shell.quit(); }
-    });
+    })();
   }
   let library: Library | undefined = $state();
   let findBar: any = $state();
@@ -134,17 +134,11 @@
   // svelte-ignore state_referenced_locally
   if ('importSample' in core && !embedded) {
     // svelte-ignore state_referenced_locally
-    const web = core as ReturnType<typeof import('../core/web').webCore>;
-    import('../core/web').then(({ seedSample }) => seedSample(web))
+    seedSample(core as ReturnType<typeof webCore>)
       .then(() => ui.libVersion++)
       .catch(e => toast(`The sample book could not be added (${(e as Error).message}).`, 6000));
   }
-  import('../core/shell').then(async ({ isTauri }) => {
-    if (!isTauri) return;
-    const { listen } = await import('@tauri-apps/api/event');
-    // svelte-ignore state_referenced_locally
-    await listen('volumen://desktop', () => readDesktop(core));
-  });
+  if (isTauri) import('@tauri-apps/api/event').then(({ listen }) => listen('volumen://desktop', () => readDesktop(core)));
 
   const ORDER: Layout[] = ['auto', 1, 2, 3];
   const NAMES = ['one column', 'two columns', 'three columns'];

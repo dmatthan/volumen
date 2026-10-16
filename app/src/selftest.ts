@@ -14,6 +14,31 @@ async function until(cond: () => boolean, what: string, ms = 20000) {
   }
 }
 
+/** Opens the test book (Thursday, else the first), and waits until it is being read. */
+async function openTestBook(reader: Reader) {
+  ([...document.querySelectorAll<HTMLElement>('.book[data-id]')].find(b => b.textContent?.includes('Thursday')) ?? document.querySelector('.book[data-id]') as HTMLElement).click();
+  await until(() => reader.reading, 'the book to open');
+}
+
+/** Frame times while `step` scrolls an element, one step a frame, until it says stop or
+ *  `ms` pass: the median, the 95th percentile, the worst, and frames over 20 ms. */
+async function scrollFrames(step: (t: number) => boolean, ms: number) {
+  const gaps: number[] = [];
+  let last = 0;
+  const t0 = performance.now();
+  await new Promise<void>(done => {
+    const f = (t: number) => {
+      if (last) gaps.push(t - last);
+      last = t;
+      if (step(t) && t - t0 < ms) requestAnimationFrame(f); else done();
+    };
+    requestAnimationFrame(f);
+  });
+  gaps.sort((a, b) => a - b);
+  const q = (x: number) => +gaps[Math.floor((gaps.length - 1) * x)].toFixed(1);
+  return { frames: gaps.length, p50: q(0.5), p95: q(0.95), max: q(1), over20: gaps.filter(g => g > 20).length };
+}
+
 function frames() {
   const gaps: number[] = [];
   let last = performance.now(), on = true;
@@ -34,8 +59,7 @@ export async function selftest(reader: Reader, map: MapCtl, log: (s: string) => 
   const out: Record<string, unknown> = { ua: navigator.userAgent, dpr: devicePixelRatio };
   await wait(800);
   const t0 = performance.now();
-  ([...document.querySelectorAll<HTMLElement>('.book[data-id]')].find(b => b.textContent?.includes('Thursday')) ?? document.querySelector('.book[data-id]') as HTMLElement).click();
-  await until(() => reader.reading, 'the book to open');
+  await openTestBook(reader);
   out.openMs = Math.round(performance.now() - t0);
   const t = (n: string) => { const e = performance.getEntriesByName(n).at(-1), o = performance.getEntriesByName('open').at(-1); return e && o ? Math.round(e.startTime - o.startTime) : null; };
   await until(() => !!performance.getEntriesByName('open:all-layout').length, 'the whole-book layout after opening');
@@ -164,8 +188,7 @@ export async function selftest(reader: Reader, map: MapCtl, log: (s: string) => 
  *  outside script plays wheel patterns through a virtual mouse (bench/wheel.sh). */
 export async function wheelProbe(reader: Reader, log: (s: string) => Promise<void>) {
   await wait(800);
-  ([...document.querySelectorAll<HTMLElement>('.book[data-id]')].find(b => b.textContent?.includes('Thursday')) ?? document.querySelector('.book[data-id]') as HTMLElement).click();
-  await until(() => reader.reading, 'the book to open');
+  await openTestBook(reader);
   await until(() => !!performance.getEntriesByName('open:all-layout').length, 'the whole-book layout');
   reader.jump(20); await wait(400);
   const t0 = performance.now();
@@ -183,8 +206,7 @@ export async function wheelProbe(reader: Reader, log: (s: string) => Promise<voi
 /** Frame times while the settings sheet scrolls (VOLUMEN_SELFTEST=sheet). */
 export async function sheetProbe(reader: Reader, log: (s: string) => Promise<void>) {
   await wait(800);
-  ([...document.querySelectorAll<HTMLElement>('.book[data-id]')].find(b => b.textContent?.includes('Thursday')) ?? document.querySelector('.book[data-id]') as HTMLElement).click();
-  await until(() => reader.reading, 'the book to open');
+  await openTestBook(reader);
   await until(() => !!performance.getEntriesByName('open:all-layout').length, 'the whole-book layout');
   const { ui } = await import('./state.svelte');
   const res: Record<string, unknown> = {};
@@ -201,22 +223,9 @@ export async function sheetProbe(reader: Reader, log: (s: string) => Promise<voi
     await wait(700);
     const sh = (document.querySelector('.sheet .scroll') || document.querySelector('.sheet')) as HTMLElement;
     const max = sh.scrollHeight - sh.clientHeight;
-    const gaps: number[] = [];
-    let last = 0, y = 0, dir = 1;
-    const t0 = performance.now();
-    await new Promise<void>(done => {
-      const f = (t: number) => {
-        if (last) gaps.push(t - last);
-        last = t;
-        y += dir * 9; if (y >= max || y <= 0) dir = -dir;
-        sh.scrollTop = y;
-        if (t - t0 < 3000) requestAnimationFrame(f); else done();
-      };
-      requestAnimationFrame(f);
-    });
-    gaps.sort((a, b) => a - b);
-    const q = (x: number) => +gaps[Math.floor((gaps.length - 1) * x)].toFixed(1);
-    res[variant] = { frames: gaps.length, p50: q(0.5), p95: q(0.95), max: q(1), over20: gaps.filter(g => g > 20).length, scrollable: max };
+    let y = 0, dir = 1;
+    const timed = await scrollFrames(() => { y += dir * 9; if (y >= max || y <= 0) dir = -dir; sh.scrollTop = y; return true; }, 3000);
+    res[variant] = { ...timed, scrollable: max };
     ui.sheet = null; await wait(400);
   }
   await log(JSON.stringify(res));
@@ -348,22 +357,9 @@ export async function libraryProbe(reader: Reader, log: (s: string) => Promise<v
     const shelf = document.querySelector('.shelf') as HTMLElement;
     shelf.scrollTop = 0; await wait(300);
     const max = shelf.scrollHeight - shelf.clientHeight;
-    const gaps: number[] = [];
-    let last = 0, y = 0;
-    const t0 = performance.now();
-    await new Promise<void>(done => {
-      const f = (t: number) => {
-        if (last) gaps.push(t - last);
-        last = t;
-        y = Math.min(max, y + 22);
-        shelf.scrollTop = y;
-        if (y < max && t - t0 < 6000) requestAnimationFrame(f); else done();
-      };
-      requestAnimationFrame(f);
-    });
-    gaps.sort((a, b) => a - b);
-    const q = (x: number) => +gaps[Math.floor((gaps.length - 1) * x)].toFixed(1);
-    res[name] = { frames: gaps.length, p50: q(0.5), p95: q(0.95), max: q(1), over20: gaps.filter(g => g > 20).length };
+    let y = 0;
+    const timed = await scrollFrames(() => { y = Math.min(max, y + 22); shelf.scrollTop = y; return y < max; }, 6000);
+    res[name] = timed;
   }
   style.remove();
   await log(JSON.stringify(res));
@@ -373,8 +369,7 @@ export async function libraryProbe(reader: Reader, log: (s: string) => Promise<v
  *  (VOLUMEN_SELFTEST=probe). A probe starting "<i>" is set in italic. */
 export async function probeStrings(reader: Reader, log: (s: string) => Promise<void>) {
   await wait(800);
-  ([...document.querySelectorAll<HTMLElement>('.book[data-id]')].find(b => b.textContent?.includes('Thursday')) ?? document.querySelector('.book[data-id]') as HTMLElement).click();
-  await until(() => reader.reading, 'the book to open');
+  await openTestBook(reader);
   await until(() => !!performance.getEntriesByName('open:all-layout').length, 'the layout');
   const T = (new URLSearchParams(location.search).get('t') || '').split('|').filter(Boolean).length ? (new URLSearchParams(location.search).get('t') || '').split('|') : ['stone\u200a…”', 'stone…”', '\u200a', 'a\u200ab', 'ab', 'a\u2009b', 'a\u2002b', 'a\u00a0b', 'a b'];
   const params = { ...(reader as any).params() };
@@ -406,8 +401,7 @@ export async function scaleProbe(reader: Reader, log: (s: string) => Promise<voi
   const { settings } = await import('./reader/settings.svelte');
   const vf = await import('./reader/verify');
   await wait(800);
-  ([...document.querySelectorAll<HTMLElement>('.book[data-id]')].find(b => b.textContent?.includes('Thursday')) ?? document.querySelector('.book[data-id]') as HTMLElement).click();
-  await until(() => reader.reading, 'the book to open');
+  await openTestBook(reader);
   await until(() => !!performance.getEntriesByName('open:all-layout').length, 'the layout');
   const out: Record<string, unknown> = {};
   for (const z of [1.25, 1.5]) {

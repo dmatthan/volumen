@@ -8,7 +8,7 @@ pub mod anchor;
 use rustc_hash::{FxHashMap, FxHasher};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-pub use vol_model::{Book, SectionKind};
+pub use vol_model::{Book, SectionKind, percent_decode};
 pub use vol_press::Params;
 /// What the importer makes of a file, as a number (`vol_ingest::VERSION`).
 pub const IMPORTER_VERSION: u32 = vol_ingest::VERSION;
@@ -220,17 +220,7 @@ impl Engine {
     /// a page, a sample (the kit). Its own id, so it never stands in for the whole book.
     pub fn import_chapters(&mut self, bytes: &[u8], name: &str, from: usize, to: usize) -> Result<String, String> {
         let mut book = vol_ingest::any(bytes, name).map_err(|e| e.to_string())?;
-        let mut n = 0;
-        book.sections.retain(|s| {
-            if s.kind != SectionKind::Chapter {
-                return false;
-            }
-            n += 1;
-            n >= from && n <= to
-        });
-        if book.sections.is_empty() {
-            return Err(format!("the book has no chapter {from}"));
-        }
+        book.keep_chapters(from, to)?;
         book.id = format!("{}-{from}-{to}", book.id);
         Ok(self.insert(book))
     }
@@ -309,24 +299,13 @@ impl Engine {
         let fams: Vec<&Arc<Family>> = [self.families.get(family), self.families.get(&format!("{family}~ext"))].into_iter().flatten().collect();
         let mut seen = rustc_hash::FxHashSet::default();
         let mut fallback = String::new();
-        let mut take = |t: &str| {
+        b.each_text(|t| {
             for c in t.chars() {
                 if seen.len() < 2000 && !c.is_control() && !c.is_whitespace() && !matches!(c, '\u{ad}' | '\u{200b}'..='\u{200f}' | '\u{2060}' | '\u{feff}') && seen.insert(c) && !fams.iter().any(|f| f.covers(c)) {
                     fallback.push(c);
                 }
             }
-        };
-        take(&b.meta.title);
-        for s in &b.sections {
-            take(&s.title);
-            take(&s.label);
-            for x in &s.blocks {
-                take(&x.text);
-            }
-        }
-        for n in &b.notes {
-            take(&n.text);
-        }
+        });
         let pre = b.sections.iter().any(|s| s.blocks.iter().any(|x| x.kind == vol_model::Kind::Pre));
         serde_json::to_string(&serde_json::json!({ "fallback": fallback, "pre": pre })).ok()
     }
@@ -435,24 +414,13 @@ fn beyond_core(b: &Book) -> String {
     let r = core_ranges();
     let mut seen = rustc_hash::FxHashSet::default();
     let mut out = String::new();
-    let mut take = |t: &str| {
+    b.each_text(|t| {
         for c in t.chars() {
             if seen.len() < 4000 && !c.is_control() && !r.iter().any(|&(a, z)| (a..=z).contains(&(c as u32))) && seen.insert(c) {
                 out.push(c);
             }
         }
-    };
-    take(&b.meta.title);
-    for s in &b.sections {
-        take(&s.title);
-        take(&s.label);
-        for x in &s.blocks {
-            take(&x.text);
-        }
-    }
-    for n in &b.notes {
-        take(&n.text);
-    }
+    });
     out
 }
 
