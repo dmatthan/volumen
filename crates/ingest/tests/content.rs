@@ -45,48 +45,13 @@ fn images_and_figures() {
 }
 
 #[test]
-fn saved_books_round_trip_and_old_saves_open() {
+fn saved_books_round_trip_with_their_notes_and_links() {
+    // (earlier releases' saved forms: typeset_model's own tests, `earlier`)
     let Some(b) = book("artofwar.epub") else { return };
     let saved = b.save().unwrap();
     let back = typeset_model::Book::restore(&saved).unwrap();
     assert_eq!(back.notes.len(), b.notes.len());
     assert_eq!(back.sections[3].blocks[2].links, b.sections[3].blocks[2].links);
-    // the format before notes: no tag, blocks without links
-    #[derive(serde::Serialize)]
-    struct OldBook<'a> {
-        id: &'a str,
-        meta: &'a typeset_model::Meta,
-        sections: Vec<OldSection<'a>>,
-    }
-    #[derive(serde::Serialize)]
-    struct OldSection<'a> {
-        kind: typeset_model::SectionKind,
-        part: &'a str,
-        label: &'a str,
-        num: &'a str,
-        title: &'a str,
-        blocks: Vec<OldBlock<'a>>,
-    }
-    #[derive(serde::Serialize)]
-    struct OldBlock<'a> {
-        key: u64,
-        kind: typeset_model::Kind,
-        text: &'a str,
-        runs: &'a [typeset_model::Run],
-    }
-    let old = OldBook {
-        id: &b.id,
-        meta: &b.meta,
-        sections: b
-            .sections
-            .iter()
-            .map(|s| OldSection { kind: s.kind, part: &s.part, label: &s.label, num: &s.num, title: &s.title, blocks: s.blocks.iter().map(|x| OldBlock { key: x.key, kind: x.kind, text: &x.text, runs: &x.runs }).collect() })
-            .collect(),
-    };
-    let bytes = postcard::to_allocvec(&old).unwrap();
-    let back = typeset_model::Book::restore(&bytes).unwrap();
-    assert_eq!(back.sections.len(), b.sections.len());
-    assert!(back.notes.is_empty());
 }
 
 #[test]

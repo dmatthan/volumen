@@ -40,12 +40,7 @@ let backend: Backend = local;
 
 export async function initKV(opts: { memory?: boolean } = {}) {
   backend = opts.memory ? memory : isTauri ? sqlite : local;
-  let rows = await backend.load().catch(() => [] as [string, string][]);
-  // first run of the desktop app after state lived in WebKit's localStorage: bring it over
-  if (isTauri && !rows.length) {
-    const old = await local.load();
-    if (old.length) { await sqlite.put(old); rows = old; }
-  }
+  const rows = await backend.load().catch(() => [] as [string, string][]);
   for (const [k, v] of rows) mem.set(k, v);
   // a tab closing or going to the background keeps what was changed in its last moments
   // (localStorage writes at once; the desktop also flushes before it quits)

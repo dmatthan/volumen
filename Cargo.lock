@@ -4071,11 +4071,9 @@ version = "0.1.0"
 dependencies = [
  "ego-tree",
  "imagesize",
- "postcard",
  "pulldown-cmark",
  "quick-xml 0.38.4",
  "scraper",
- "serde",
  "typeset-model",
  "zip",
 ]

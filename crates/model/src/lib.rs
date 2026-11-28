@@ -101,9 +101,7 @@ pub fn percent_decode(s: &str) -> String {
 }
 
 pub const SAVE_MAGIC: &[u8; 4] = b"VOL\x05";
-const SAVE_MAGIC_V4: &[u8; 4] = b"VOL\x04";
 const SAVE_MAGIC_V3: &[u8; 4] = b"VOL\x03";
-const SAVE_MAGIC_V2: &[u8; 4] = b"VOL\x02";
 
 /// `[start, end)` moved onto `text`'s characters: inside it, on character boundaries
 /// (outward), or `None` if nothing is left.
@@ -191,26 +189,17 @@ impl Book {
         Some(out)
     }
 
-    /// Reads a saved book of this format or an earlier one (what an earlier format lacks,
-    /// such as notes or tables, comes with a fresh import).
+    /// Reads a saved book of this form or of an earlier release's (`earlier`); any other
+    /// is refused, and the book is imported again from its file.
     pub fn restore(bytes: &[u8]) -> Result<Book, String> {
         if let Some(rest) = bytes.strip_prefix(SAVE_MAGIC) {
             return postcard::from_bytes(rest).map_err(|e| e.to_string());
-        }
-        if let Some(rest) = bytes.strip_prefix(SAVE_MAGIC_V4) {
-            let v4: earlier::V4 = postcard::from_bytes(rest).map_err(|e| e.to_string())?;
-            return Ok(v4.into());
         }
         if let Some(rest) = bytes.strip_prefix(SAVE_MAGIC_V3) {
             let v3: earlier::V3 = postcard::from_bytes(rest).map_err(|e| e.to_string())?;
             return Ok(v3.into());
         }
-        if let Some(rest) = bytes.strip_prefix(SAVE_MAGIC_V2) {
-            let v2: earlier::V2 = postcard::from_bytes(rest).map_err(|e| e.to_string())?;
-            return Ok(v2.into());
-        }
-        let v1: earlier::V1 = postcard::from_bytes(bytes).map_err(|e| e.to_string())?;
-        Ok(v1.into())
+        Err("saved in a form no release wrote; import the book's file again".into())
     }
 }
 
